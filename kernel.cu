@@ -8,7 +8,8 @@
 __global__ static void KernelWarmup() {
 }
 
-__global__ static void addKernel(int* c, const int* a, const int* b, int size) {
+template<typename Ty_>
+__global__ static void addKernel(Ty_* c, const Ty_* a, const Ty_* b, int size) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < size) {
 		c[i] = a[i] + b[i];
@@ -50,8 +51,13 @@ __global__ static void divEqualsKernel(int* c, const int* a, const int& b, int s
 	}
 }
 
-template <typename Ty_, typename KernelFunc>
-__host__ std::vector<Ty_> performOperastor(const std::vector<Ty_>& a, const std::vector<Ty_>& b, KernelFunc kernelFunction) {
+// TODO add more operators
+
+__global__ void matrix_multiplication_kernel(const float* A, const float* B, float* C, int M, int N, int K) {
+
+}
+
+__host__ void CUDAContextInit() {
 	// cudastatus for tracking errors
 	cudaError_t cudaStatus = cudaSuccess;
 
@@ -59,66 +65,16 @@ __host__ std::vector<Ty_> performOperastor(const std::vector<Ty_>& a, const std:
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to set device! (incompatible GPU?)" << std::endl;
-		return {};
+		return;
 	}
 
-	// Device pointers
-	Ty_* dev_a = nullptr, * dev_b = nullptr;
-
-	// Vector size
-	size_t size = a.size() > b.size() ? b.size() : a.size();
-
-	// Pinned memory pointer
-	Ty_* c, * foo = new int();
-
-	// CUDA stream
-	cudaStream_t stream;
-	cudaStatus = cudaStreamCreate(&stream);
-
-
-	if (cudaStatus != cudaSuccess) {
-		std::cerr << "Failed to create stream!" << std::endl;
-		cudaStreamDestroy(stream);
-		return {};
-	}
-
-	// Kernel launch configuration
-	int threadsPerBlock = 1024;
-	int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
-	kernelFunction << <blocksPerGrid, threadsPerBlock, 0, stream >> > (c, dev_a, dev_b, size);
-
-	// Synchronize the stream to ensure all tasks are complete
-	cudaStatus = cudaStreamSynchronize(stream);
-	if (cudaStatus != cudaSuccess) {
-		std::cerr << "Failed to synchronize streams!" << std::endl;
-		cudaFree(dev_a);
-		cudaFree(dev_b);
-		cudaFreeHost(c);
-		cudaStreamDestroy(stream);
-
-		return {};
-	}
-
-	// Cleanup
-	cudaFree(dev_a);
-	cudaFree(dev_b);
-	cudaFreeHost(c);
-	delete foo;
-	cudaStatus = cudaStreamDestroy(stream);
-	if (cudaStatus != cudaSuccess) {
-		std::cerr << "Failed to destroy stream!" << std::endl;
-		cudaFree(dev_a);
-		cudaFree(dev_b);
-		cudaFreeHost(c);
-		cudaStreamDestroy(stream);
-
-		return {};
-	}
+	KernelWarmup << <1, 1>> > ();
+	cudaDeviceSynchronize();
 }
 
 template <typename Ty_, typename KernelFunc>
 __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::vector<Ty_>& b, KernelFunc kernelFunction) {
-
+	CUDAContextInit();
 	// cudastatus for tracking errors
 	cudaError_t cudaStatus = cudaSuccess;
 
@@ -136,7 +92,7 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::
 	size_t size = a.size() > b.size() ? b.size() : a.size();
 
 	// Pinned memory pointer
-	Ty_* c, * foo = new int();
+	Ty_* c;
 
 	// CUDA stream
 	cudaStream_t stream;
@@ -201,7 +157,6 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::
 	cudaFree(dev_a);
 	cudaFree(dev_b);
 	cudaFreeHost(c);
-	delete foo;
 	cudaStatus = cudaStreamDestroy(stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to destroy stream!" << std::endl;
@@ -310,12 +265,7 @@ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& b, Kernel
 
 template<typename Ty_>
 std::vector<Ty_> operator+(const std::vector<Ty_>& left, const std::vector<Ty_>& right) {
-	std::vector<Ty_> res(left.size());
-	for (size_t i = 0; i < left.size(); i++) {
-		res[i] = left[i] + right[i];
-	}
-	return res;
-	// return performOperator(left, right, addKernel);
+	return performOperator(left, right, addKernel);
 }
 
 template<typename Ty_>
@@ -330,38 +280,20 @@ std::vector<Ty_> operator*(const std::vector<Ty_>& left, const std::vector<Ty_>&
 
 
 int main() {
-	{
-	KernelWarmup << <1, 1 >> > ();
-	}
+	CUDAContextInit();
 	const size_t size = 1 << 20;
 	std::vector<int> A(size);
 	std::vector<int> B(size);
-	std::vector<int> C = {1, 2, 3};
-	std::vector<int> D = {1, 2, 3};
 
 	for (size_t i = 0; i < size; ++i) {
 		A[i] = i;
 		B[i] = i;
 	}
-	{
-		benchmark::Timer<float> Timer;
-		A + B;
-	}
-	{
-		benchmark::Timer<float> Timer;
-		performOperator(A, B, addKernel);
-	}
-	{
-		benchmark::Timer<float> Timer;
-		performOperator(A, B, addKernel);
-	}
-	{
-		benchmark::Timer<float> Timer;
-		performOperator(A, B, mulKernel);
-	}
-	
 
-	std::cout << std::endl;
+	{
+		benchmark::Timer<float> timer;
+		performOperator(A, B, addKernel<int>);
+	}
 
 	return 0;
 }
