@@ -1,16 +1,18 @@
 ﻿#include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-#include <functional>
 #include <vector>
 #include "benchmark.h"
 #include <iostream>
 
-typedef std::vector<std::vector<int>> Matrix2x2;
+typedef std::vector<std::vector<int>> Matrix;
 
 using std::cout;
 using std::endl;
 using std::cerr;
 using std::flush;
+
+
+// KERNELS
 
 __global__ static void KernelWarmup() {
 }
@@ -63,14 +65,21 @@ __global__ static void divEqualsKernel(Ty_* c, const Ty_* a, const Ty_& b, unsig
 	}
 }
 
-// TODO add more operators
-__global__ void matrix_multiplication_kernel(int* A, int* B, int* C, unsigned int M, unsigned int N, unsigned int K) {
-	for (size_t i = 0; i < M; i++) {
-		for (size_t k = 0; k < N; k++) {
+template <typename Ty_>
+__global__ static void matmul_kernel(const Ty_* A, const Ty_* B, Ty_* C, unsigned int M, unsigned int K, unsigned int N) {
+	int row = blockIdx.y * blockDim.y + threadIdx.y;
+	int col = blockIdx.x * blockDim.x + threadIdx.x;
 
+	if (row < M && col < N) {
+		Ty_ sum = 0;
+		for (int i = 0; i < K; ++i) {
+			sum += A[row * K + i] * B[i * N + col];
 		}
+		C[row * N + col] = sum;
 	}
 }
+
+// HOST FUNCTIONS
 
 __host__ void CUDAContextInit(int device = 0) {
 	// cudastatus for tracking errors
@@ -85,6 +94,71 @@ __host__ void CUDAContextInit(int device = 0) {
 
 	KernelWarmup << <1, 1 >> > ();
 	cudaDeviceSynchronize();
+}
+
+template <typename Ty_, typename KernelFunc>
+__host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::vector<Ty_>& b, KernelFunc kernelFunction);
+
+template <typename Ty_, typename KernelFunc>
+__host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& b, KernelFunc kernelFunction);
+
+template <typename Ty_>
+__host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector<Ty_>& b, unsigned int M, unsigned int K, unsigned int N);
+
+template<typename Ty_>
+std::vector<Ty_> operator+(const std::vector<Ty_>& left, const std::vector<Ty_>& right) {
+	return performOperator(left, right, addKernel);
+}
+
+template<typename Ty_>
+std::vector<Ty_> operator+(const std::vector<Ty_>& left, const Ty_& right) {
+	return performOperator(left, right, addKernel);
+}
+
+template<typename Ty_>
+std::vector<Ty_> operator*(const std::vector<Ty_>& left, const std::vector<Ty_>& right) {
+	return performOperator(left, right, addKernel);
+}
+
+template<typename Ty_>
+std::vector<Ty_> matmul_flat(const std::vector<Ty_>& A, const std::vector<Ty_>& B, unsigned int M, unsigned int K, unsigned int N) {
+	std::vector<Ty_> C(M * N, Ty_(0));
+
+	for (unsigned int i = 0; i < M; ++i) {
+		for (unsigned int k = 0; k < K; ++k) {
+			Ty_ a_ik = A[i * K + k];
+			for (unsigned int j = 0; j < N; ++j) {
+				C[i * N + j] += a_ik * B[k * N + j];
+			}
+		}
+	}
+
+	return C;
+}
+
+int main() {
+	CUDAContextInit();
+	const size_t size = 1 << 14;
+	const size_t dim = 1 << 7;
+	std::vector<int> A(size);
+	std::vector<int> B(size);
+
+	for (size_t i = 0; i < size; ++i) {
+		A[i] = i;
+		B[i] = i;
+	}
+
+	{
+		benchmark::Timer<float> timer;
+		matmul_flat(A, B, dim, dim, dim);
+	}
+
+	std::vector<int> res;
+	{
+		benchmark::Timer<float> timer;
+		res = matrixMul(A, B, dim, dim, dim);
+	}
+	return 0;
 }
 
 template <typename Ty_, typename KernelFunc>
@@ -138,6 +212,7 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::
 
 		return {};
 	}
+
 	cudaStatus = cudaMemcpyAsync(dev_b, b.data(), size * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
@@ -246,8 +321,8 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 	}
 
 	// Kernel launch configuration
-	int threadsPerBlock = 1024;
-	int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
+	dim3 blocksPerGrid(1024);
+	dim3 threadsPerBlock(size / 1024);
 	kernelFunction << <blocksPerGrid, threadsPerBlock, 0, stream >> > (c, dev_a, dev_b, size);
 
 	// Synchronize the stream to ensure all tasks are complete
@@ -279,7 +354,7 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 }
 
 template <typename Ty_>
-__host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>&a, const Ty_ & b) {
+__host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector<Ty_>& b, unsigned int M, unsigned int K, unsigned int N) {
 	// cudastatus for tracking errors
 	cudaError_t cudaStatus = cudaSuccess;
 
@@ -294,7 +369,8 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>&a, const Ty_ & b) {
 	Ty_* dev_a = nullptr, * dev_b = nullptr;
 
 	// Vector size
-	size_t size = a.size();
+	size_t size_a = M * K;
+	size_t size_b = K * N;
 
 	// Pinned memory pointer
 	Ty_* c;
@@ -309,14 +385,14 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>&a, const Ty_ & b) {
 	}
 
 	// Allocate pinned host memory
-	cudaMallocHost(&c, size * sizeof(Ty_));
+	cudaMallocHost(&c, M * N * sizeof(Ty_));
 
 	// Allocate device memory
-	cudaMalloc(&dev_a, size * sizeof(Ty_));
-	cudaMalloc(&dev_b, sizeof(Ty_));
+	cudaMalloc(&dev_a, size_a * sizeof(Ty_));
+	cudaMalloc(&dev_b, size_b * sizeof(Ty_));
 
 	// Copy data from host to device asynchronously
-	cudaStatus = cudaMemcpyAsync(dev_a, a.data(), size * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
+	cudaStatus = cudaMemcpyAsync(dev_a, a.data(), size_a * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
 		cudaFree(dev_a);
@@ -326,7 +402,8 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>&a, const Ty_ & b) {
 
 		return {};
 	}
-	cudaStatus = cudaMemcpyAsync(dev_b, &b, sizeof(Ty_), cudaMemcpyHostToDevice, stream);
+
+	cudaStatus = cudaMemcpyAsync(dev_b, b.data(), size_b * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
 		cudaFree(dev_a);
@@ -338,9 +415,9 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>&a, const Ty_ & b) {
 	}
 
 	// Kernel launch configuration
-	int threadsPerBlock = 1024;
-	int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
-	kernelFunction << <blocksPerGrid, threadsPerBlock, 0, stream >> > (c, dev_a, dev_b, size);
+	dim3 threadsPerBlock(16, 16);
+	dim3 blocksPerGrid((N + 15) / 16, (M + 15) / 16);
+	matmul_kernel << <blocksPerGrid, threadsPerBlock, 0, stream >> > (dev_a, dev_b, c, M, K, N);
 
 	// Synchronize the stream to ensure all tasks are complete
 	cudaStatus = cudaStreamSynchronize(stream);
@@ -354,7 +431,7 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>&a, const Ty_ & b) {
 		return {};
 	}
 
-	std::vector<Ty_> res(c, c + size);
+	std::vector<Ty_> res(c, c + M * N);
 
 	// Cleanup
 	cudaFree(dev_a);
@@ -368,78 +445,4 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>&a, const Ty_ & b) {
 	}
 
 	return res;
-}
-
-template<typename Ty_>
-std::vector<Ty_> operator+(const std::vector<Ty_>& left, const std::vector<Ty_>& right) {
-	return performOperator(left, right, addKernel);
-}
-
-template<typename Ty_>
-std::vector<Ty_> operator+(const std::vector<Ty_>& left, const Ty_& right) {
-	return performOperator(left, right, addKernel);
-}
-
-template<typename Ty_>
-std::vector<Ty_> operator*(const std::vector<Ty_>& left, const std::vector<Ty_>& right) {
-	return performOperator(left, right, addKernel);
-}
-
-
-
-// to multiply two matrices
-Matrix2x2 mult(const Matrix2x2& arr, const Matrix2x2& brr) {
-	int n = arr.size();
-
-	// to store the resultant matrix
-	Matrix2x2 res(n, std::vector<int>(n, 0));
-
-	for (int i = 0; i < n; i++) {
-		for (int j = 0; j < n; j++) {
-			for (int k = 0; k < n; k++) {
-				res[i][j] += arr[i][k] * brr[k][j];
-			}
-		}
-	}
-
-	return res;
-}
-
-int main() {
-	CUDAContextInit();
-	const size_t size = 2;
-	std::vector<std::vector<int>> A(size);
-	A[0] = { 1, 2 };
-	A[1] = { 3, 4 };
-	std::vector<std::vector<int>> B(size);
-	B[0] = { 5, 6 };
-	B[1] = { 7, 8 };
-	std::vector<std::vector<int>> C(size);
-	C[0] = { 0, 0 };
-	C[1] = { 0, 0 };
-
-	std::vector<std::vector<int>> res = mult(A, B);
-	for (int i = 0; i < res.size(); i++) {
-		for (int j = 0; j < res[i].size(); j++) {
-			cout << res[i][j] << " ";
-		}
-		cout << endl;
-	}
-	// matrix_multiplication_kernel(A.data()->data(), B.data()->data(), C.data()->data(), A.size(), A[0].size(), B.size());
-#ifdef PERF_DEBUG
-	const size_t size = 1 << 20;
-	std::vector<int> A(size);
-	std::vector<int> B(size);
-
-	for (size_t i = 0; i < size; ++i) {
-		A[i] = i;
-		B[i] = i;
-	}
-
-	{
-		benchmark::Timer<float> timer;
-		performOperator(A, B, addKernel<int>);
-	}
-#endif
-	return 0;
 }
