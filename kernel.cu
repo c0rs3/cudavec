@@ -140,56 +140,82 @@ std::vector<Ty_> matmul_flat(const std::vector<Ty_>& A, const std::vector<Ty_>& 
 template<typename Ty_>
 std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M, unsigned int K, unsigned int N) {
 	Ty_* C = new Ty_[M * N];
-	for (int i = 0; i < M; ++i) {
-		for (int j = 0; j < N; j += 8) { // 8 floats per AVX register
+	std::memset(C, 0, sizeof(Ty_) * M * N);
+
+	for (unsigned int i = 0; i < M; ++i) {
+		for (unsigned int j = 0; j < N; j += 8) {
 			__m256 c_vec = _mm256_setzero_ps();
 
-			for (int k = 0; k < K; ++k) {
-				__m256 b_vec = _mm256_loadu_ps(&B[k * N + j]);
+			for (unsigned int k = 0; k < K; ++k) {
+				__m256 b_vec;
+				if (j + 8 <= N) {
+					b_vec = _mm256_loadu_ps(&B[k * N + j]);
+				}
+				else {
+					// Tail handling
+					float tmp[8] = {};
+					for (unsigned int t = 0; t < N - j; ++t)
+						tmp[t] = B[k * N + j + t];
+					b_vec = _mm256_loadu_ps(tmp);
+				}
+
 				__m256 a_val = _mm256_set1_ps(A[i * K + k]);
 				c_vec = _mm256_fmadd_ps(a_val, b_vec, c_vec);
 			}
 
-			_mm256_storeu_ps(&C[i * N + j], c_vec);
+			if (j + 8 <= N) {
+				_mm256_storeu_ps(&C[i * N + j], c_vec);
+			}
+			else {
+				float tmp[8];
+				_mm256_storeu_ps(tmp, c_vec);
+				for (unsigned int t = 0; t < N - j; ++t)
+					C[i * N + j + t] = tmp[t];
+			}
 		}
 	}
-	return std::vector<Ty_>(C, C + M * N);
+
+	std::vector<Ty_> result(C, C + M * N);
+	delete[] C;
+	return result;
 }
 
 int main() {
 	CUDAContextInit();
-	for (size_t i = 0; i < 10; i++) {
+	for (size_t k = 1; k <= 10; k++) {
+		const size_t size = 1 << k * 2;
+		const size_t dim = 1 << k;
+		std::vector<float> A(size);
+		std::vector<float> B(size);
 
-	}
-	const size_t size = 1 << 16;
-	const size_t dim = 1 << 8;
-	std::vector<float> A(size);
-	std::vector<float> B(size);
+		for (size_t i = 0; i < size; ++i) {
+			A[i] = i;
+			B[i] = i; 
+		}
 
-	for (size_t i = 0; i < size; ++i) {
-		A[i] = i;
-		B[i] = i;
+		{
+			std::clog << "AVX:\n";
+			benchmark::Timer<float> timer1;
+			matmul_avx(A.data(), B.data(), dim, dim, dim);
+		}
+		auto dur1 = benchmark::dur;
+		std::clog << "\n";
+		// std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(benchmark::dur).count() << "ms" << endl;
+
+		{
+			std::clog << "CUDA:\n";
+			benchmark::Timer<float> timer2;
+			matrixMul(A, B, dim, dim, dim);
+		}
+
+		if (dur1.count() > benchmark::dur.count()) {
+			std::cout << i << endl;
+			return;
+		}
+		std::clog << "\n";
+		// std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(benchmark::dur).count() << "ms" << endl;
 	}
 
-	{
-		std::clog << "AVX:\n";
-		benchmark::Timer<float> timer;
-		matmul_avx(A.data(), B.data(), dim, dim, dim);
-	}
-	std::chrono::duration<float> dur1 = benchmark::dur;
-	// std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(benchmark::dur).count() << "ms" << endl;
-
-	{
-		std::clog << "CUDA:\n";
-		benchmark::Timer<float> timer;
-		matrixMul(A, B, dim, dim, dim);
-	}
-	std::chrono::duration<float> dur2 = benchmark::dur;
-	if (!dur1.count() > dur2.count()) {
-		std::cout << "stop\n";
-		break;
-	}
-	// std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(benchmark::dur).count() << "ms" << endl;
 	return 0;
 }
 
