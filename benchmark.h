@@ -23,10 +23,13 @@ public:
         std::chrono::steady_clock::time_point end = std::chrono::high_resolution_clock::now();
         duration = end - start;
         dur = duration;
-        std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << "ms" << " || ";
+        std::clog << "Duration(ms): " << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << "ms" << endl;
+        std::clog << "Duration(ns): " << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << "ns" << std::endl;
+        /*
         if (!std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() > 0) {
-            std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << "ns" << std::endl;
+            std::clog << "Duration(ns): " << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << "ns" << std::endl;
         }
+        */
     }
 };
 

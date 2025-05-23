@@ -82,7 +82,66 @@ __global__ static void matmul_kernel(const Ty_* A, const Ty_* B, Ty_* C, unsigne
 
 // HOST FUNCTIONS
 
-__host__ void CUDAContextInit(int device = 0) {
+// param:
+// int device (GPU ID)
+__host__ void CUDAContextInit(int device);
+
+template <typename Ty_, typename KernelFunc>
+__host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::vector<Ty_>& b, KernelFunc kernelFunction);
+
+template <typename Ty_, typename KernelFunc>
+__host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& b, KernelFunc kernelFunction);
+
+template <typename Ty_>
+__host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector<Ty_>& b, unsigned int M, unsigned int K, unsigned int N);
+
+template<typename Ty_>
+std::vector<Ty_> matmul_flat(const std::vector<Ty_>& A, const std::vector<Ty_>& B, unsigned int M, unsigned int K, unsigned int N);
+
+template<typename Ty_>
+std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M, unsigned int K, unsigned int N);
+
+
+int main() {
+	CUDAContextInit(0);
+	for (size_t k = 1; k <= 10; k++) {
+		const size_t size = 1 << k * 2;
+		const size_t dim = 1 << k;
+		std::vector<float> A(size);
+		std::vector<float> B(size);
+
+		for (size_t i = 0; i < size; ++i) {
+			A[i] = i;
+			B[i] = i;
+		}
+
+		std::clog << "Element size:" << (1 << k * 2) << endl;
+		{
+			std::clog << "AVX:" << endl;
+			benchmark::Timer<float> timer1;
+			matmul_avx(A.data(), B.data(), dim, dim, dim);
+		}
+		auto dur1 = benchmark::dur;
+		std::clog << endl;
+
+		{
+			std::clog << "CUDA:" << endl;
+			benchmark::Timer<float> timer2;
+			matrixMul(A, B, dim, dim, dim);
+		}
+		auto dur2 = benchmark::dur;
+		std::clog << endl;
+
+		if (dur1.count() > dur2.count()) {
+			std::cout << endl << k << endl;
+			return 0;
+		}
+	}
+
+	return 0;
+}
+
+__host__ void CUDAContextInit(int device) {
 	// cudastatus for tracking errors
 	cudaError_t cudaStatus = cudaSuccess;
 
@@ -95,30 +154,6 @@ __host__ void CUDAContextInit(int device = 0) {
 
 	KernelWarmup << <1, 1 >> > ();
 	cudaDeviceSynchronize();
-}
-
-template <typename Ty_, typename KernelFunc>
-__host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::vector<Ty_>& b, KernelFunc kernelFunction);
-
-template <typename Ty_, typename KernelFunc>
-__host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& b, KernelFunc kernelFunction);
-
-template <typename Ty_>
-__host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector<Ty_>& b, unsigned int M, unsigned int K, unsigned int N);
-
-template<typename Ty_>
-std::vector<Ty_> operator+(const std::vector<Ty_>& left, const std::vector<Ty_>& right) {
-	return performOperator(left, right, addKernel);
-}
-
-template<typename Ty_>
-std::vector<Ty_> operator+(const std::vector<Ty_>& left, const Ty_& right) {
-	return performOperator(left, right, addKernel);
-}
-
-template<typename Ty_>
-std::vector<Ty_> operator*(const std::vector<Ty_>& left, const std::vector<Ty_>& right) {
-	return performOperator(left, right, addKernel);
 }
 
 template<typename Ty_>
@@ -180,48 +215,8 @@ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M, unsigned
 	return result;
 }
 
-int main() {
-	CUDAContextInit();
-	for (size_t k = 1; k <= 10; k++) {
-		const size_t size = 1 << k * 2;
-		const size_t dim = 1 << k;
-		std::vector<float> A(size);
-		std::vector<float> B(size);
-
-		for (size_t i = 0; i < size; ++i) {
-			A[i] = i;
-			B[i] = i; 
-		}
-
-		{
-			std::clog << "AVX:\n";
-			benchmark::Timer<float> timer1;
-			matmul_avx(A.data(), B.data(), dim, dim, dim);
-		}
-		auto dur1 = benchmark::dur;
-		std::clog << "\n";
-		// std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(benchmark::dur).count() << "ms" << endl;
-
-		{
-			std::clog << "CUDA:\n";
-			benchmark::Timer<float> timer2;
-			matrixMul(A, B, dim, dim, dim);
-		}
-
-		if (dur1.count() > benchmark::dur.count()) {
-			std::cout << i << endl;
-			return;
-		}
-		std::clog << "\n";
-		// std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(benchmark::dur).count() << "ms" << endl;
-	}
-
-	return 0;
-}
-
 template <typename Ty_, typename KernelFunc>
 __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::vector<Ty_>& b, KernelFunc kernelFunction) {
-	CUDAContextInit();
 	// cudastatus for tracking errors
 	cudaError_t cudaStatus = cudaSuccess;
 
