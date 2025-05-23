@@ -6,16 +6,15 @@
 #define _BENCHMARK_END }
 
 _BENCHMARK_BEGIN
+std::chrono::duration<float> dur;
 
-template<typename type>
+template<typename Ty_>
 class Timer {
 private:
 public:
-    static size_t alloc_size;
-
-	std::chrono::duration<type> duration;
+	std::chrono::duration<Ty_> duration;
     std::chrono::steady_clock::time_point start; 
-
+    
     Timer(){
         start = std::chrono::high_resolution_clock::now();
     }
@@ -23,8 +22,11 @@ public:
     ~Timer(){
         std::chrono::steady_clock::time_point end = std::chrono::high_resolution_clock::now();
         duration = end - start;
+        dur = duration;
         std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << "ms" << " || ";
-        std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << "ns" << std::endl;
+        if (!std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() > 0) {
+            std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << "ns" << std::endl;
+        }
     }
 };
 

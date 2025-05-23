@@ -3,6 +3,7 @@
 #include <vector>
 #include "benchmark.h"
 #include <iostream>
+#include <immintrin.h>
 
 typedef std::vector<std::vector<int>> Matrix;
 
@@ -136,12 +137,34 @@ std::vector<Ty_> matmul_flat(const std::vector<Ty_>& A, const std::vector<Ty_>& 
 	return C;
 }
 
+template<typename Ty_>
+std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M, unsigned int K, unsigned int N) {
+	Ty_* C = new Ty_[M * N];
+	for (int i = 0; i < M; ++i) {
+		for (int j = 0; j < N; j += 8) { // 8 floats per AVX register
+			__m256 c_vec = _mm256_setzero_ps();
+
+			for (int k = 0; k < K; ++k) {
+				__m256 b_vec = _mm256_loadu_ps(&B[k * N + j]);
+				__m256 a_val = _mm256_set1_ps(A[i * K + k]);
+				c_vec = _mm256_fmadd_ps(a_val, b_vec, c_vec);
+			}
+
+			_mm256_storeu_ps(&C[i * N + j], c_vec);
+		}
+	}
+	return std::vector<Ty_>(C, C + M * N);
+}
+
 int main() {
 	CUDAContextInit();
-	const size_t size = 1 << 14;
-	const size_t dim = 1 << 7;
-	std::vector<int> A(size);
-	std::vector<int> B(size);
+	for (size_t i = 0; i < 10; i++) {
+
+	}
+	const size_t size = 1 << 16;
+	const size_t dim = 1 << 8;
+	std::vector<float> A(size);
+	std::vector<float> B(size);
 
 	for (size_t i = 0; i < size; ++i) {
 		A[i] = i;
@@ -149,15 +172,24 @@ int main() {
 	}
 
 	{
+		std::clog << "AVX:\n";
 		benchmark::Timer<float> timer;
-		matmul_flat(A, B, dim, dim, dim);
+		matmul_avx(A.data(), B.data(), dim, dim, dim);
 	}
+	std::chrono::duration<float> dur1 = benchmark::dur;
+	// std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(benchmark::dur).count() << "ms" << endl;
 
-	std::vector<int> res;
 	{
+		std::clog << "CUDA:\n";
 		benchmark::Timer<float> timer;
-		res = matrixMul(A, B, dim, dim, dim);
+		matrixMul(A, B, dim, dim, dim);
 	}
+	std::chrono::duration<float> dur2 = benchmark::dur;
+	if (!dur1.count() > dur2.count()) {
+		std::cout << "stop\n";
+		break;
+	}
+	// std::clog << "Duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(benchmark::dur).count() << "ms" << endl;
 	return 0;
 }
 
