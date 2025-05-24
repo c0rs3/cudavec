@@ -4,8 +4,7 @@
 #include "benchmark.h"
 #include <iostream>
 #include <immintrin.h>
-
-typedef std::vector<std::vector<int>> Matrix;
+#include "eigen/Eigen/Dense"
 
 using std::cout;
 using std::endl;
@@ -15,6 +14,7 @@ using std::flush;
 
 // KERNELS
 
+// empty kernel call for context initialization
 __global__ static void KernelWarmup() {
 }
 
@@ -107,6 +107,9 @@ int main() {
 	for (size_t k = 1; k <= 10; k++) {
 		const size_t size = 1 << k * 2;
 		const size_t dim = 1 << k;
+		Eigen::MatrixXd m1 = Eigen::MatrixXd::Constant(dim, dim, 2.0);
+		Eigen::MatrixXd m2 = Eigen::MatrixXd::Constant(dim, dim, 2.0);
+
 		std::vector<float> A(size);
 		std::vector<float> B(size);
 
@@ -132,10 +135,22 @@ int main() {
 		auto dur2 = benchmark::dur;
 		std::clog << endl;
 
-		if (dur1.count() > dur2.count()) {
-			std::cout << endl << k << endl;
-			return 0;
+		{
+			std::clog << "Eigen:" << endl;
+			benchmark::Timer<float> timer3;
+			m1 = m1 * m2;
+
 		}
+		auto dur3 = benchmark::dur;
+		std::clog << endl;
+
+		{
+			std::clog << "CPU:" << endl;
+			benchmark::Timer<float> timer4;
+			matmul_flat(A, B, dim, dim, dim);
+		}
+		auto dur4 = benchmark::dur;
+		std::clog << endl;
 	}
 
 	return 0;
