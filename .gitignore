@@ -12,6 +12,11 @@
 *.sln
 *.vcxproj
 
+# vcpkg files
+vcpkg_installed
+vcpkg_installed/*
+*.json
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 

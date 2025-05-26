@@ -6,7 +6,7 @@
 #define _BENCHMARK_END }
 
 _BENCHMARK_BEGIN
-std::chrono::duration<float> dur;
+static std::chrono::duration<float> dur;
 
 template<typename Ty_>
 class Timer {
