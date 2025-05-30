@@ -1,6 +1,7 @@
 #pragma once
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+#include <type_traits>
 #include <iostream>
 #include <vector>
 #include <immintrin.h>
