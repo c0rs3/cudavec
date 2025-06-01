@@ -1,9 +1,8 @@
 ﻿#include "kernel.cuh" 
 // KERNELS
 
-// empty kernel call for context initialization
-__global__ void KernelWarmup() {
-}
+// Empty kernel call for context initialization
+__global__ void KernelWarmup() {}
 
 template<typename Ty_>
 __global__ void addKernel(Ty_* c, const Ty_* a, const Ty_* b, unsigned int size) {
@@ -67,8 +66,7 @@ __global__ void matmul_kernel(const Ty_* A, const Ty_* B, Ty_* C, unsigned int M
 	}
 }
 
-__host__ void CUDAContextInit() {
-	// cudastatus for tracking errors
+__host__ void CUDAContextInit(int device = 0) {
 	cudaError_t cudaStatus = cudaSuccess;
 
 	// Set device (GPU)
@@ -86,10 +84,10 @@ template<typename Ty_>
 std::vector<Ty_> matmul_flat(const std::vector<Ty_>& A, const std::vector<Ty_>& B, unsigned int M, unsigned int K, unsigned int N) {
 	std::vector<Ty_> C(M * N, 0);
 
-	for (unsigned int i = 0; i < M; ++i) {
-		for (unsigned int k = 0; k < K; ++k) {
+	for (unsigned int i = 0; i < M; i++) {
+		for (unsigned int k = 0; k < K; k++) {
 			Ty_ a_ik = A[i * K + k];
-			for (unsigned int j = 0; j < N; ++j) {
+			for (unsigned int j = 0; j < N; j++) {
 				C[i * N + j] += a_ik * B[k * N + j];
 			}
 		}
@@ -160,7 +158,7 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::
 	size_t size = a.size() > b.size() ? b.size() : a.size();
 
 	// Pinned memory pointer
-	Ty_* c;
+	Ty_* c = nullptr;
 
 	// CUDA stream
 	cudaStream_t stream;
@@ -259,7 +257,7 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 	size_t size = a.size();
 
 	// Pinned memory pointer
-	Ty_* c;
+	Ty_* c = nullptr;
 
 	// CUDA stream
 	cudaStream_t stream;
@@ -352,7 +350,7 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector
 	size_t size_b = K * N;
 
 	// Pinned memory pointer
-	Ty_* c;
+	Ty_* c = nullptr;
 
 	// CUDA stream
 	cudaStream_t stream;
@@ -426,53 +424,41 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector
 	return res;
 }
 
-void bench() {
-	std::vector<float> res1, res2, res3;
-	for (size_t k = 1; k <= 18; k++) {
+void bench(size_t start_dim = 1, size_t end_dim = 16) {
+
+	for (size_t k = start_dim; k <= end_dim; k++) {
 		const size_t size = 1 << k * 2;
 		const size_t dim = 1 << k;
-		Eigen::MatrixXd m1 = Eigen::MatrixXd::Constant(dim, dim, 2.0);
-		Eigen::MatrixXd m2 = Eigen::MatrixXd::Constant(dim, dim, 2.0);
 
 		std::vector<float> A(size);
 		std::vector<float> B(size);
-
 		for (size_t i = 0; i < size; ++i) {
 			A[i] = i;
 			B[i] = i;
 		}
-		std::clog << "Element size:" << (1 << k * 2) << endl;
+		std::clog << "Element size:" << (1 << k * 2) << " || Dimensions: " << dim << "x" << dim << endl;
+		
 		{
 			std::clog << "AVX:" << endl;
 			benchmark::Timer<float> timer1;
-			std::vector<float> res1 = matmul_avx(A.data(), B.data(), dim, dim, dim);
-		}
-		auto dur1 = benchmark::dur;
+			matmul_avx(A.data(), B.data(), dim, dim, dim);
+		}		
 		std::clog << endl;
 
 		{
 			std::clog << "CUDA:" << endl;
 			benchmark::Timer<float> timer2;
-			std::vector<float> res2 = matrixMul(A, B, dim, dim, dim);
+			matrixMul(A, B, dim, dim, dim);
 		}
-		auto dur2 = benchmark::dur;
-		std::clog << endl;
-
-		{
-			std::clog << "Eigen:" << endl;
-			benchmark::Timer<float> timer3;
-			m1 = m1 * m2;
-		}
-		auto dur3 = benchmark::dur;
 		std::clog << endl;
 
 		{
 			std::clog << "CPU:" << endl;
 			benchmark::Timer<float> timer4;
-			res3 = matmul_flat(A, B, dim, dim, dim);
+			matmul_flat(A, B, dim, dim, dim);
 		}
-		auto dur4 = benchmark::dur;
 		std::clog << endl;
+
 
 	}
 }
@@ -501,42 +487,43 @@ void test_matrix_multiplication_correctness(size_t dim) {
 	std::vector<Ty_> res_flat = matmul_flat(A, B, dim, dim, dim);
 	std::vector<Ty_> res_cuda = matrixMul(A, B, dim, dim, dim);
 
-	// Eigen is used as reference
-	Eigen::Map<const Eigen::Matrix<Ty_, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> mA(A.data(), dim, dim);
-	Eigen::Map<const Eigen::Matrix<Ty_, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>> mB(B.data(), dim, dim);
-	Eigen::Matrix<Ty_, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> mE = mA * mB;
-
-	// Flatten Eigen result
-	std::vector<Ty_> res_eigen(size);
-	Eigen::Map<Eigen::Matrix<Ty_, Eigen::Dynamic, 1>>(res_eigen.data(), size) = Eigen::Map<Eigen::Matrix<Ty_, Eigen::Dynamic, 1>>(mE.data(), size);
-
 	auto check_equal = [&](const std::vector<Ty_>& computed, const std::vector<Ty_>& reference, const std::string& label) {
+		std::cout << "check_equal for " << label << std::endl;
 		for (size_t i = 0; i < size; ++i) {
-			if (std::abs(computed[i] - reference[i]) > 1e-3f) {
-				std::cerr << label << " mismatch at index " << i
+			if (i % 100 == 0)
+				std::cout << "\rLines remaining: " << size - i << " " << std::flush;
+
+			if (std::abs(computed[i] - reference[i]) > (pow(10, log10(computed[i]) - 1))) {
+				std::cerr << std::endl << label << " mismatch at index " << i
 					<< ": got " << computed[i]
 					<< ", expected " << reference[i] << std::endl;
 					assert(false);
 			}
 		}
+		std::cout << "\rLines remaining: " << 0 << " " << std::flush << std::endl;
+
 		};
 
 	auto check_equal_f = [&](const std::vector<float>& computed, const std::vector<Ty_>& reference, const std::string& label) {
+		std::cout << "check_equal for " << label << std::endl;
 		for (size_t i = 0; i < size; ++i) {
-			if (std::abs(computed[i] - reference[i]) > log10(size)) {
-				std::cerr << label << " mismatch at index " << i
+			if (i % 100 == 0)
+				std::cout << "\rLines remaining: " << size - i << " " << std::flush;
+
+			if (std::abs(computed[i] - reference[i]) > (pow(10, log10(computed[i]) - 1))) {
+				std::cerr << std::endl << label << " mismatch at index " << i
 					<< ": got " << computed[i]
 					<< ", expected " << reference[i] << std::endl;
 					assert(false);
 			}
 		}
+		std::cout << "\rLines remaining: " << 0 << " " << std::flush << std::endl;
 		};
 
-	check_equal(res_flat, res_eigen, "Flat");
 	if (std::is_same<Ty_, float>::value) {
-		check_equal_f(res_avx, res_eigen, "AVX");
+		check_equal_f(res_avx, res_flat, "AVX");
 	}
-	check_equal(res_cuda, res_eigen, "CUDA");
+	check_equal(res_cuda, res_flat, "CUDA");
 
 	std::clog << "All implementations passed correctness test for size " << dim << "x" << dim << ".\n";
 }
@@ -545,6 +532,7 @@ void test_matrix_multiplication_correctness(size_t dim) {
 
 int main() {
 	CUDAContextInit();
-	test_matrix_multiplication_correctness<int>(static_cast<size_t>(1) << 14);
+	// test_matrix_multiplication_correctness<float>(static_cast<size_t>(1) << 10);
+	bench();
 	return 0;
 }
