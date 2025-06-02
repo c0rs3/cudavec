@@ -81,7 +81,7 @@ __host__ void CUDAContextInit(int device = 0) {
 }
 
 template<typename Ty_>
-std::vector<Ty_> matmul_flat(const std::vector<Ty_>& A, const std::vector<Ty_>& B, unsigned int M, unsigned int K, unsigned int N) {
+std::vector<Ty_> matmul_flat(const Ty_* A, const Ty_* B, unsigned int M, unsigned int K, unsigned int N) {
 	std::vector<Ty_> C(M * N, 0);
 
 	for (unsigned int i = 0; i < M; i++) {
@@ -331,7 +331,7 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 }
 
 template <typename Ty_>
-__host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector<Ty_>& b, unsigned int M, unsigned int K, unsigned int N) {
+__host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M, unsigned int K, unsigned int N) {
 	// cudastatus for tracking errors
 	cudaError_t cudaStatus = cudaSuccess;
 
@@ -369,7 +369,7 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector
 	cudaMalloc(&dev_b, size_b * sizeof(Ty_));
 
 	// Copy data from host to device asynchronously
-	cudaStatus = cudaMemcpyAsync(dev_a, a.data(), size_a * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
+	cudaStatus = cudaMemcpyAsync(dev_a, a, size_a * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
 		cudaFree(dev_a);
@@ -380,7 +380,7 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector
 		return {};
 	}
 
-	cudaStatus = cudaMemcpyAsync(dev_b, b.data(), size_b * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
+	cudaStatus = cudaMemcpyAsync(dev_b, b, size_b * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
 		cudaFree(dev_a);
@@ -424,7 +424,7 @@ __host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector
 	return res;
 }
 
-void bench(size_t start_dim = 1, size_t end_dim = 16) {
+void bench(size_t start_dim = 1, size_t end_dim = 10) {
 
 	for (size_t k = start_dim; k <= end_dim; k++) {
 		const size_t size = 1 << k * 2;
@@ -437,29 +437,27 @@ void bench(size_t start_dim = 1, size_t end_dim = 16) {
 			B[i] = i;
 		}
 		std::clog << "Element size:" << (1 << k * 2) << " || Dimensions: " << dim << "x" << dim << endl;
-		
+
 		{
 			std::clog << "AVX:" << endl;
 			benchmark::Timer<float> timer1;
 			matmul_avx(A.data(), B.data(), dim, dim, dim);
-		}		
+		}
 		std::clog << endl;
 
 		{
 			std::clog << "CUDA:" << endl;
 			benchmark::Timer<float> timer2;
-			matrixMul(A, B, dim, dim, dim);
+			matmul_cuda(A.data(), B.data(), dim, dim, dim);
 		}
 		std::clog << endl;
 
 		{
 			std::clog << "CPU:" << endl;
 			benchmark::Timer<float> timer4;
-			matmul_flat(A, B, dim, dim, dim);
+			matmul_flat(A.data(), B.data(), dim, dim, dim);
 		}
 		std::clog << endl;
-
-
 	}
 }
 
@@ -484,10 +482,10 @@ void test_matrix_multiplication_correctness(size_t dim) {
 		}
 		res_avx = matmul_avx(Af.data(), Bf.data(), dim, dim, dim);
 	}
-	std::vector<Ty_> res_flat = matmul_flat(A, B, dim, dim, dim);
-	std::vector<Ty_> res_cuda = matrixMul(A, B, dim, dim, dim);
+	std::vector<Ty_> res_flat = matmul_flat(A.data(), B.data(), dim, dim, dim);
+	std::vector<Ty_> res_cuda = matmul_cuda(A.data(), B.data(), dim, dim, dim);
 
-	auto check_equal = [&](const std::vector<Ty_>& computed, const std::vector<Ty_>& reference, const std::string& label) {
+	auto check_equal = [&size](const std::vector<Ty_>& computed, const std::vector<Ty_>& reference, const std::string& label) {
 		std::cout << "check_equal for " << label << std::endl;
 		for (size_t i = 0; i < size; ++i) {
 			if (i % 100 == 0)
@@ -504,7 +502,7 @@ void test_matrix_multiplication_correctness(size_t dim) {
 
 		};
 
-	auto check_equal_f = [&](const std::vector<float>& computed, const std::vector<Ty_>& reference, const std::string& label) {
+	auto check_equal_f = [&size](const std::vector<float>& computed, const std::vector<Ty_>& reference, const std::string& label) {
 		std::cout << "check_equal for " << label << std::endl;
 		for (size_t i = 0; i < size; ++i) {
 			if (i % 100 == 0)
@@ -528,11 +526,8 @@ void test_matrix_multiplication_correctness(size_t dim) {
 	std::clog << "All implementations passed correctness test for size " << dim << "x" << dim << ".\n";
 }
 
-
-
 int main() {
 	CUDAContextInit();
-	// test_matrix_multiplication_correctness<float>(static_cast<size_t>(1) << 10);
 	bench();
 	return 0;
 }

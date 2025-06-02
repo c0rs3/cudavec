@@ -6,6 +6,7 @@
 #define _BENCHMARK_END }
 
 _BENCHMARK_BEGIN
+// After each scope can be used to store/get the duration of that scope
 static std::chrono::duration<float> dur;
 
 template<typename Ty_>
@@ -25,11 +26,6 @@ public:
         dur = duration;
         std::clog << "Duration(ms): " << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << "ms" << endl;
         std::clog << "Duration(ns): " << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << "ns" << std::endl;
-        /*
-        if (!std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() > 0) {
-            std::clog << "Duration(ns): " << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << "ns" << std::endl;
-        }
-        */
     }
 };
 
