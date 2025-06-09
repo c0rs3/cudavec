@@ -1,10 +1,9 @@
 ﻿#include "kernel.cuh"
-#include <cublas_v2.h>
-#include <cublasLt.h>
-// KERNELS
 
+// KERNELS
+// 
 // Empty kernel call for context initialization
-__global__ static void KernelWarmup() {}
+__global__ void KernelWarmup() {}
 
 template<typename Ty_>
 __global__ void addKernel(Ty_* c, const Ty_* a, const Ty_* b, unsigned int size) {
@@ -111,8 +110,7 @@ __host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M,
 				__m256 b_vec;
 				if (j + 8 <= N) {
 					b_vec = _mm256_loadu_ps(&B[k * N + j]);
-				}
-				else {
+				} else {
 					// Tail handling
 					float tmp[8] = {};
 					for (unsigned int t = 0; t < N - j; ++t)
@@ -126,8 +124,7 @@ __host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M,
 
 			if (j + 8 <= N) {
 				_mm256_storeu_ps(&C[i * N + j], c_vec);
-			}
-			else {
+			} else {
 				float tmp[8];
 				_mm256_storeu_ps(tmp, c_vec);
 				for (unsigned int t = 0; t < N - j; ++t)
@@ -363,19 +360,13 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 		return {};
 	}
 
-
+	// Allocate device memory
+	cudaMallocAsync(&dev_a, size_a * sizeof(Ty_), stream);
+	cudaMallocAsync(&dev_b, size_b * sizeof(Ty_), stream);
 	// Allocate pinned host memory
 	cudaMallocHost(&c, M * N * sizeof(Ty_));
 
-
-	// Allocate device memory
-	cudaMalloc(&dev_a, size_a * sizeof(Ty_));
-	cudaMalloc(&dev_b, size_b * sizeof(Ty_));
-
-
-
 	// Copy data from host to device asynchronously
-
 	cudaStatus = cudaMemcpyAsync(dev_a, a, size_a * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
@@ -417,7 +408,7 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 		return {};
 	}
 	std::vector<Ty_> res = std::vector<Ty_>(c, c + M * N);
-
+	// cudaMemcpyAsync(res.data(), c, M * N, cudaMemcpyDeviceToHost, stream);
 	// Cleanup
 	cudaFree(dev_a);
 	cudaFree(dev_b);
@@ -438,14 +429,14 @@ __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int
 	cudaStream_t stream;
 	cudaStreamCreate(&stream);
 
-	Ty_* d_A = nullptr, * d_B = nullptr, * d_C = nullptr;
-	cudaMallocAsync(&d_A, M * K * sizeof(Ty_), stream);
-	cudaMallocAsync(&d_B, K * N * sizeof(Ty_), stream);
+	Ty_* dev_a = nullptr, * dev_b = nullptr, * dev_c = nullptr;
+	cudaMallocAsync(&dev_a, M * K * sizeof(Ty_), stream);
+	cudaMallocAsync(&dev_b, K * N * sizeof(Ty_), stream);
 
-	cudaMallocAsync(&d_C, M * N * sizeof(Ty_), stream);
+	cudaMallocAsync(&dev_c, M * N * sizeof(Ty_), stream);
 
-	cudaMemcpyAsync(d_A, A, M * K * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
-	cudaMemcpyAsync(d_B, B, K * N * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
+	cudaMemcpyAsync(dev_a, A, M * K * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
+	cudaMemcpyAsync(dev_b, B, K * N * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 
 	cublasHandle_t handle;
 	cublasCreate(&handle);
@@ -458,31 +449,30 @@ __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int
 			CUBLAS_OP_N, CUBLAS_OP_N,
 			M, N, K,
 			&alpha,
-			d_A, M,  
-			d_B, K,  
+			dev_a, M,
+			dev_b, K,
 			&beta,
-			d_C, M
+			dev_c, M
 		);
-	}
-	else {
+	} else {
 		cublasDgemm(
 			handle,
 			CUBLAS_OP_N, CUBLAS_OP_N,
 			M, N, K,
 			&alpha,
-			d_A, M,
-			d_B, K,
+			dev_a, M,
+			dev_b, K,
 			&beta,
-			d_C, M
+			dev_c, M
 		);
 	}
 	std::vector<Ty_> res = std::vector<Ty_>(M * N);
-	cudaMemcpyAsync(res.data(), d_C, M * N * sizeof(Ty_), cudaMemcpyDeviceToHost, stream);
+	cudaMemcpyAsync(res.data(), dev_c, M * N * sizeof(Ty_), cudaMemcpyDeviceToHost, stream);
 	cudaDeviceSynchronize();
 
-	cudaFree(d_A);
-	cudaFree(d_B);
-	cudaFree(d_C);
+	cudaFree(dev_a);
+	cudaFree(dev_b);
+	cudaFree(dev_c);
 	cudaStreamDestroy(stream);
 	cublasDestroy(handle);
 
@@ -557,12 +547,20 @@ void test_matrix_multiplication_correctness(unsigned int dim) {
 	std::clog << "All implementations passed correctness test for size " << dim << "x" << dim << ".\n";
 }
 
+// Returns the total amount of available memory in Mbs (Megabytes)
+unsigned long long getTotalSystemMemory() {
+	MEMORYSTATUSEX status;
+	status.dwLength = sizeof(status);
+	GlobalMemoryStatusEx(&status);
+	return status.ullAvailPhys / 1000000;
+}
+
 int main() {
 	CUDAContextInit();
-
-	/*
-	const size_t size = 1 << 10 * 2;
-	const size_t dim = 1 << 10;
+#if BENCHMARK
+	size_t k = 11;
+	const size_t size = static_cast<size_t>(1) << k * 2;
+	const size_t dim = static_cast<size_t>(1) << k;
 
 	std::vector<float> A(size);
 	std::vector<float> B(size);
@@ -572,11 +570,13 @@ int main() {
 	}
 	std::clog << "Testing " << dim << "x" << dim << ".\n";
 	std::vector<float> res1, res2, res3;
+#if BENCHMARK_FLAT
 	{
 		std::clog << "Flat total time:" << endl;
 		benchmark::Timer<float> timer;
 		res1 = matmul_flat(A.data(), B.data(), dim, dim, dim);
 	}
+#endif
 	{
 		std::clog << "cublas total time:" << endl;
 		benchmark::Timer<float> timer;
@@ -587,7 +587,8 @@ int main() {
 		benchmark::Timer<float> timer;
 		res3 = matmul_cuda(A.data(), B.data(), dim, dim, dim);
 	}
-	*/
+#else
 	test_matrix_multiplication_correctness<float>(2);
 	return 0;
+#endif
 }
