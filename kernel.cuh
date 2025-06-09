@@ -1,13 +1,20 @@
 #pragma once
+
+// CUDA & CUBLAS
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+
 #include <type_traits>
 #include <iostream>
 #include <vector>
 #include <immintrin.h>
+#include <assert.h>
+
 #include "benchmark.h"
 
+
 using std::cout;
+using std::clog;
 using std::endl;
 using std::cerr;
 using std::flush;
@@ -30,17 +37,17 @@ template<typename Ty_>
 __global__ void divEqualsKernel(Ty_* c, const Ty_* a, const Ty_& b, unsigned int size);
 
 template <typename Ty_>
-__global__ void matmul_kernel(const Ty_* A, const Ty_* B, Ty_* C, unsigned int M, unsigned int K, unsigned int N);
+__global__ void matmul_kernel(const Ty_* A, const Ty_* B, Ty_* C, unsigned int M, unsigned int N, unsigned int K);
 
 // Lazy loading for CUDA kernel calls
 // \param int device - the device id
 __host__ void CUDAContextInit(int device);
 
 template<typename Ty_>
-__host__ std::vector<Ty_> matmul_flat(const std::vector<Ty_>& A, const std::vector<Ty_>& B, unsigned int M, unsigned int K, unsigned int N);
+__host__ std::vector<Ty_> matmul_flat(const Ty_* A, const Ty_* B, unsigned int M, unsigned int N, unsigned int K);
 
 template<typename Ty_>
-__host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M, unsigned int K, unsigned int N);
+__host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M, unsigned int N, unsigned int K);
 
 template <typename Ty_, typename KernelFunc>
 __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::vector<Ty_>& b, KernelFunc kernelFunction);
@@ -49,4 +56,7 @@ template <typename Ty_, typename KernelFunc>
 __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& b, KernelFunc kernelFunction);
 
 template <typename Ty_>
-__host__ std::vector<Ty_> matrixMul(const std::vector<Ty_>& a, const std::vector<Ty_>& b, unsigned int M, unsigned int K, unsigned int N);
+__host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M, unsigned int N, unsigned int K);
+
+template <typename Ty_>
+__host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int M, unsigned int N, unsigned int K);
