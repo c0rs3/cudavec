@@ -4,13 +4,16 @@
 - All functions are templated
 - Has a lazy loading function called `CudaContextInit()`, which speeds up the initial kernel calls 4x at worst
 ## Benchmark Results
-- All results are correct and can be verified calling this function
+- All matrix multiplication results are correct and can be verified calling this function
  ```test_matrix_multiplication_correctness<typename>([control size])```
 
 ### Specs:
 - GPU: Intel I9-14900HX
 - GPU: RTX 4060 Mobile
-#### Debug Mode
+- Launch configuration: Release mode
+
+![alt text](readmess.png "Title")
+#### (More results)
 ```
 Element size:1048576 || Dimensions: 1024x1024
 AVX:

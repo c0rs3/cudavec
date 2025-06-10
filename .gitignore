@@ -396,3 +396,5 @@ FodyWeavers.xsd
 *.exe
 *.out
 *.app
+/graph.py
+/graph.py

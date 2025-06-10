@@ -443,7 +443,7 @@ __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int
 
 	Ty_ alpha = 1.0, beta = 0.0;
 
-	if constexpr (std::is_same<Ty_, float>::value) {
+	if (std::is_same<Ty_, float>::value) {
 		cublasSgemm(
 			handle,
 			CUBLAS_OP_N, CUBLAS_OP_N,
@@ -556,20 +556,57 @@ unsigned long long getTotalSystemMemory() {
 }
 
 int main() {
+	File logger("log.txt");
 	CUDAContextInit();
+	size_t sample_size = 3, size_limit = 13;
+	
 #if BENCHMARK
-	size_t k = 11;
-	const size_t size = static_cast<size_t>(1) << k * 2;
-	const size_t dim = static_cast<size_t>(1) << k;
+	for (unsigned int k = 1; k <= size_limit; ++k) {
+		const unsigned int size = static_cast<unsigned int>(1) << k * 2;
+		const unsigned int dim = static_cast<unsigned int>(1) << k;
 
-	std::vector<float> A(size);
-	std::vector<float> B(size);
-	for (size_t i = 0; i < size; ++i) {
-		A[i] = i;
-		B[i] = i;
+		std::vector<float> A(size);
+		std::vector<float> B(size);
+		for (unsigned int i = 0; i < size; ++i) {
+			A[i] = i;
+			B[i] = i;
+		}
+		std::clog << "Testing " << dim << "x" << dim << ".\n";
+		logger.log(std::to_string(size));
+		float dur1 = 0, dur2 = 0, dur3 = 0, dur4 = 0;
+		for (unsigned int i = 0; i < sample_size; i++) {
+			std::vector<float> res1;
+			{
+				std::clog << "cublas total time:" << endl;
+				benchmark::Timer<float> timer;
+				res1 = matmul_cublas(A.data(), B.data(), dim, dim, dim);
+			}
+			dur1 += benchmark::dur.count();
+			{
+				std::clog << "cuda total time:" << endl;
+				benchmark::Timer<float> timer;
+				res1 = matmul_cuda(A.data(), B.data(), dim, dim, dim);
+			}
+			dur2 += benchmark::dur.count();
+			{
+				std::clog << "Flat total time:" << endl;
+				benchmark::Timer<float> timer;
+				res1 = matmul_flat(A.data(), B.data(), dim, dim, dim);
+			}
+			dur3 += benchmark::dur.count();
+			{
+				std::clog << "AVX total time:" << endl;
+				benchmark::Timer<float> timer;
+				res1 = matmul_avx(A.data(), B.data(), dim, dim, dim);
+			}
+			dur4 += benchmark::dur.count();
+		}
+		logger.log(std::to_string(dur1 / sample_size));
+		logger.log(std::to_string(dur2 / sample_size));
+		logger.log(std::to_string(dur3 / sample_size));
+		logger.log(std::to_string(dur4 / sample_size));
 	}
-	std::clog << "Testing " << dim << "x" << dim << ".\n";
-	std::vector<float> res1, res2, res3;
+
 #if BENCHMARK_FLAT
 	{
 		std::clog << "Flat total time:" << endl;
@@ -577,18 +614,10 @@ int main() {
 		res1 = matmul_flat(A.data(), B.data(), dim, dim, dim);
 	}
 #endif
-	{
-		std::clog << "cublas total time:" << endl;
-		benchmark::Timer<float> timer;
-		res2 = matmul_cublas(A.data(), B.data(), dim, dim, dim);
-	}
-	{
-		std::clog << "cuda total time:" << endl;
-		benchmark::Timer<float> timer;
-		res3 = matmul_cuda(A.data(), B.data(), dim, dim, dim);
-	}
+
 #else
 	test_matrix_multiplication_correctness<float>(2);
+
 	return 0;
 #endif
 }

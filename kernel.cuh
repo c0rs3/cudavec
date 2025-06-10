@@ -15,6 +15,7 @@
 #include <immintrin.h>
 #include <assert.h>
 #include <windows.h>
+#include <string>
 #include <fstream>
 
 #include "benchmark.hpp"
@@ -97,3 +98,21 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
  */
 template <typename Ty_>
 __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int M, unsigned int N, unsigned int K);
+
+class File {
+public:
+	File(const char* name) {
+		filestream = std::fstream(name);
+	}
+
+	~File() {
+		filestream.close();
+	}
+
+	void log(const std::string& logtext) {
+		filestream << logtext << std::endl;
+	}
+private:
+	std::string filename;
+	std::fstream filestream;
+};
