@@ -1,8 +1,9 @@
-﻿#include "kernel.cuh"
+﻿#include "cudaVec.cuh"
 
 // KERNELS
-// 
-// Empty kernel call for context initialization
+/**
+ * \brief Empty kernel for lazy loading
+ **/
 __global__ void KernelWarmup() {}
 
 template<typename Ty_>
@@ -395,7 +396,6 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 
 	matmul_kernel << <blocksPerGrid, threadsPerBlock, 0, stream >> > (dev_a, dev_b, c, M, N, K);
 
-
 	// Synchronize the stream to ensure all tasks are complete
 	cudaStatus = cudaStreamSynchronize(stream);
 	if (cudaStatus != cudaSuccess) {
@@ -427,7 +427,12 @@ template <typename Ty_>
 __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int M, unsigned int N, unsigned int K) {
 	// static_assert(std::is_same<Ty_, float>::value || std::is_same<Ty_, double>::value, "Ty_ must be float or double");
 	cudaStream_t stream;
-	cudaStreamCreate(&stream);
+	cudaStatus = cudaStreamCreate(&stream);
+	if (cudaStatus != cudaSuccess) {
+		std::cerr << "Failed to create stream!" << std::endl;
+		cudaStreamDestroy(stream);
+		return {};
+	}
 
 	Ty_* dev_a = nullptr, * dev_b = nullptr, * dev_c = nullptr;
 	cudaMallocAsync(&dev_a, M * K * sizeof(Ty_), stream);
@@ -435,8 +440,26 @@ __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int
 
 	cudaMallocAsync(&dev_c, M * N * sizeof(Ty_), stream);
 
-	cudaMemcpyAsync(dev_a, A, M * K * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
-	cudaMemcpyAsync(dev_b, B, K * N * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
+	cudaStatus = cudaMemcpyAsync(dev_a, A, M * K * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
+	if (cudaStatus != cudaSuccess) {
+		std::cerr << "Failed memcpy!" << std::endl;
+		cudaFree(dev_a);
+		cudaFree(dev_b);
+		cudaFreeHost(c);
+		cudaStreamDestroy(stream);
+
+		return {};
+	}
+	cudaStatus = cudaMemcpyAsync(dev_b, B, K * N * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
+	if (cudaStatus != cudaSuccess) {
+		std::cerr << "Failed memcpy!" << std::endl;
+		cudaFree(dev_a);
+		cudaFree(dev_b);
+		cudaFreeHost(c);
+		cudaStreamDestroy(stream);
+
+		return {};
+	}
 
 	cublasHandle_t handle;
 	cublasCreate(&handle);
@@ -444,7 +467,7 @@ __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int
 	Ty_ alpha = 1.0, beta = 0.0;
 
 	if (std::is_same<Ty_, float>::value) {
-		cublasSgemm(
+		cublasSgemm_v2(
 			handle,
 			CUBLAS_OP_N, CUBLAS_OP_N,
 			M, N, K,
@@ -455,7 +478,7 @@ __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int
 			dev_c, M
 		);
 	} else {
-		cublasDgemm(
+		cublasSgemm_v2(
 			handle,
 			CUBLAS_OP_N, CUBLAS_OP_N,
 			M, N, K,
@@ -545,14 +568,6 @@ void test_matrix_multiplication_correctness(unsigned int dim) {
 	check_equal(res_clas, res_flat, "CLAS");
 
 	std::clog << "All implementations passed correctness test for size " << dim << "x" << dim << ".\n";
-}
-
-// Returns the total amount of available memory in Mbs (Megabytes)
-unsigned long long getTotalSystemMemory() {
-	MEMORYSTATUSEX status;
-	status.dwLength = sizeof(status);
-	GlobalMemoryStatusEx(&status);
-	return status.ullAvailPhys / 1000000;
 }
 
 int main() {
