@@ -62,9 +62,31 @@ __host__ std::vector<Ty_> matmul_flat(const Ty_* A, const Ty_* B, unsigned int M
 template<typename Ty_>
 __host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M, unsigned int N, unsigned int K);
 
+/**
+ * \brief Performs a basic operator using cuda
+ *
+ * Note that this function uses page-locked memory (host memory).
+ *
+ * \param a	- First vector
+ * \param b - Second vector
+ * \param kernelfunction  -  Second vector
+ * \return
+ * std::vector<Ty_>
+ */
 template <typename Ty_, typename KernelFunc>
 __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::vector<Ty_>& b, KernelFunc kernelFunction);
 
+/**
+ * \brief Performs a basic operator using cuda
+ *
+ * Note that this function uses page-locked memory (host memory).
+ *
+ * \param a	- First vector
+ * \param b - Second vector
+ * \param kernelfunction  -  Second vector
+ * \return
+ * std::vector<Ty_>
+ */
 template <typename Ty_, typename KernelFunc>
 __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& b, KernelFunc kernelFunction);
 

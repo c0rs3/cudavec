@@ -78,7 +78,7 @@ __host__ void CUDAContextInit(int device = 0) {
 		return;
 	}
 
-	KernelWarmup << <1, 1 >> > ();
+	KernelWarmup << <1024, 1 >> > ();
 	cudaDeviceSynchronize();
 }
 
@@ -360,7 +360,7 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 		cudaStreamDestroy(stream);
 		return {};
 	}
-
+	
 	// Allocate device memory
 	cudaMallocAsync(&dev_a, size_a * sizeof(Ty_), stream);
 	cudaMallocAsync(&dev_b, size_b * sizeof(Ty_), stream);
@@ -390,10 +390,12 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 		return {};
 	}
 
+	// dim3 blocksPerGrid((N + 15) / 16, (M + 15) / 16);
+	// dim3 threadsPerBlock(8, 8);
 	// Kernel launch configuration
-	dim3 threadsPerBlock(16, 16);
-	dim3 blocksPerGrid((N + 15) / 16, (M + 15) / 16);
-
+	// TODO: Variable (& better) launch configuration
+	unsigned int blocksPerGrid = 1024;
+	unsigned int threadsPerBlock = 1024;
 	matmul_kernel << <blocksPerGrid, threadsPerBlock, 0, stream >> > (dev_a, dev_b, c, M, N, K);
 
 	// Synchronize the stream to ensure all tasks are complete
@@ -426,6 +428,7 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 template <typename Ty_>
 __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int M, unsigned int N, unsigned int K) {
 	// static_assert(std::is_same<Ty_, float>::value || std::is_same<Ty_, double>::value, "Ty_ must be float or double");
+	cudaError_t cudaStatus = cudaSuccess;
 	cudaStream_t stream;
 	cudaStatus = cudaStreamCreate(&stream);
 	if (cudaStatus != cudaSuccess) {
@@ -445,7 +448,7 @@ __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int
 		std::cerr << "Failed memcpy!" << std::endl;
 		cudaFree(dev_a);
 		cudaFree(dev_b);
-		cudaFreeHost(c);
+		cudaFreeHost(dev_c);
 		cudaStreamDestroy(stream);
 
 		return {};
@@ -455,7 +458,7 @@ __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int
 		std::cerr << "Failed memcpy!" << std::endl;
 		cudaFree(dev_a);
 		cudaFree(dev_b);
-		cudaFreeHost(c);
+		cudaFreeHost(dev_c);
 		cudaStreamDestroy(stream);
 
 		return {};
@@ -573,9 +576,8 @@ void test_matrix_multiplication_correctness(unsigned int dim) {
 int main() {
 	File logger("log.txt");
 	CUDAContextInit();
-	size_t sample_size = 3, size_limit = 13;
-	
 #if BENCHMARK
+	size_t sample_size = 5, size_limit = 12;
 	for (unsigned int k = 1; k <= size_limit; ++k) {
 		const unsigned int size = static_cast<unsigned int>(1) << k * 2;
 		const unsigned int dim = static_cast<unsigned int>(1) << k;
@@ -596,25 +598,25 @@ int main() {
 				benchmark::Timer<float> timer;
 				res1 = matmul_cublas(A.data(), B.data(), dim, dim, dim);
 			}
-			dur1 += benchmark::dur.count();
+			dur1 += benchmark::last_duration.count();
 			{
 				std::clog << "cuda total time:" << endl;
 				benchmark::Timer<float> timer;
 				res1 = matmul_cuda(A.data(), B.data(), dim, dim, dim);
 			}
-			dur2 += benchmark::dur.count();
+			dur2 += benchmark::last_duration.count();
 			{
 				std::clog << "Flat total time:" << endl;
 				benchmark::Timer<float> timer;
 				res1 = matmul_flat(A.data(), B.data(), dim, dim, dim);
 			}
-			dur3 += benchmark::dur.count();
+			dur3 += benchmark::last_duration.count();
 			{
 				std::clog << "AVX total time:" << endl;
 				benchmark::Timer<float> timer;
 				res1 = matmul_avx(A.data(), B.data(), dim, dim, dim);
 			}
-			dur4 += benchmark::dur.count();
+			dur4 += benchmark::last_duration.count();
 		}
 		logger.log(std::to_string(dur1 / sample_size));
 		logger.log(std::to_string(dur2 / sample_size));
@@ -631,8 +633,33 @@ int main() {
 #endif
 
 #else
-	test_matrix_multiplication_correctness<float>(2);
+	// test_matrix_multiplication_correctness<float>(2);
+	size_t k = 10;
+	const unsigned int size = static_cast<unsigned int>(1) << k * 2;
+	const unsigned int dim = static_cast<unsigned int>(1) << k;
 
+	std::vector<float> A(size);
+	std::vector<float> B(size);
+	for (unsigned int i = 0; i < size; ++i) {
+		A[i] = i;
+		B[i] = i;
+	}
+
+	{
+		std::clog << "Cuda total time:" << endl;
+		benchmark::Timer<float> timer;
+		matmul_cuda(A.data(), B.data(), dim, dim, dim);
+	}
+	{
+		std::clog << "Cuda total time:" << endl;
+		benchmark::Timer<float> timer;
+		matmul_cuda(A.data(), B.data(), dim, dim, dim);
+	}
+	{
+		std::clog << "Cublas total time:" << endl;
+		benchmark::Timer<float> timer;
+		matmul_cublas(A.data(), B.data(), dim, dim, dim);
+	}
 	return 0;
 #endif
 }
