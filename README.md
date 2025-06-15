@@ -11,10 +11,11 @@
 - GPU: Intel I9-14900HX
 - GPU: RTX 4060 Mobile
 - Launch configuration: Release mode
+- ```/O2``` and ```-use_fast_math``` enabled
 
-![alt text](readmess.png "Title")
+![graph smh](readmess.png "Title")
 #### (More results)
-```
+```cpp
 Element size:1048576 || Dimensions: 1024x1024
 AVX:
 Duration(ms): 455ms
@@ -30,7 +31,7 @@ Duration(ns): 2080368256ns
 ```
 - 80x speed up on GPU compared to CPU and 18x compared to AVX Instructions even on debug mode
 #### Release Mode
-```
+```cpp
 Element size:1048576 || Dimensions: 1024x1024
 AVX:
 Duration(ms): 282ms
@@ -46,7 +47,7 @@ Duration(ns): 298425216ns
 ```
 ## Lazy Loading Improvements
 - With lazy loading (1024 x 1024 matrices)
-```
+```cpp
 CUDA:
 Duration(ms): 7ms
 Duration(ns): 7033400ns
@@ -55,7 +56,7 @@ Duration(ms): 6ms
 Duration(ns): 6937900ns
 ```
 - Without lazy loading (1024 x 1024 matrices)
-```
+```cpp
 CUDA:
 Duration(ms): 77ms
 Duration(ns): 77046496ns
