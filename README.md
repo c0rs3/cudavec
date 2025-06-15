@@ -1,51 +1,29 @@
 # cudaVec
-- Implementation of matrix multipication with CUDA
+- Implementation of matrix multipication _(and few other operators)_ with CUDA
 - All kernel functions are wrapped/can be wrapped in a helper function
-- All functions are templated
-- Has a lazy loading function called `CudaContextInit()`, which speeds up the initial kernel calls 4x at worst
+- A lazy loading function `CudaContextInit()`, which speeds up the initial kernel call 4x at worst
 ## Benchmark Results
-- All matrix multiplication results are correct and can be verified calling this function
+- Even matrices multiplied
+- All matrix multiplication results are correct and can be verified
  ```test_matrix_multiplication_correctness<typename>([control size])```
+ - _Note: for floating-point vectors sensitivity is adjusted whilst comparing_
 
 ### Specs:
 - GPU: Intel I9-14900HX
 - GPU: RTX 4060 Mobile
+### Configuration
+- CUDA Toolkit Version 12.9
+- Compiler: MSVC + nvcc
 - Launch configuration: Release mode
 - ```/O2``` and ```-use_fast_math``` enabled
 
-![graph smh](readmess.png "Title")
-#### (More results)
-```cpp
-Element size:1048576 || Dimensions: 1024x1024
-AVX:
-Duration(ms): 455ms
-Duration(ns): 455705088ns
+![graph smh](benchss.png "Title")
 
-CUDA:
-Duration(ms): 25ms
-Duration(ns): 25189900ns
+- 80x speed up on GPU compared to CPU and 18x compared to AVX Instructions
+- Comparable performance with CUBLAS
 
-CPU:
-Duration(ms): 2080ms
-Duration(ns): 2080368256ns
-```
-- 80x speed up on GPU compared to CPU and 18x compared to AVX Instructions even on debug mode
-#### Release Mode
-```cpp
-Element size:1048576 || Dimensions: 1024x1024
-AVX:
-Duration(ms): 282ms
-Duration(ns): 282751296ns
 
-CUDA:
-Duration(ms): 7ms
-Duration(ns): 7432400ns
-
-CPU:
-Duration(ms): 298ms
-Duration(ns): 298425216ns
-```
-## Lazy Loading Improvements
+### Lazy Loading
 - With lazy loading (1024 x 1024 matrices)
 ```cpp
 CUDA:

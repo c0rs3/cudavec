@@ -10,18 +10,15 @@
 
 // STL
 #include <type_traits>
-#include <iostream>
 #include <vector>
 #include <immintrin.h>
 #include <assert.h>
-#include <windows.h>
 #include <string>
 #include <fstream>
 
 #include "benchmark.hpp"
 
 #define BENCHMARK 1
-#define BENCHMARK_FLAT 0
 
 using std::cout;
 using std::clog;

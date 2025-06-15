@@ -78,7 +78,7 @@ __host__ void CUDAContextInit(int device = 0) {
 		return;
 	}
 
-	KernelWarmup << <1024, 1 >> > ();
+	KernelWarmup << <1, 1 >> > ();
 	cudaDeviceSynchronize();
 }
 
@@ -577,7 +577,7 @@ int main() {
 	File logger("log.txt");
 	CUDAContextInit();
 #if BENCHMARK
-	size_t sample_size = 5, size_limit = 12;
+	size_t sample_size = 1, size_limit = 10;
 	for (unsigned int k = 1; k <= size_limit; ++k) {
 		const unsigned int size = static_cast<unsigned int>(1) << k * 2;
 		const unsigned int dim = static_cast<unsigned int>(1) << k;
@@ -624,42 +624,7 @@ int main() {
 		logger.log(std::to_string(dur4 / sample_size));
 	}
 
-#if BENCHMARK_FLAT
-	{
-		std::clog << "Flat total time:" << endl;
-		benchmark::Timer<float> timer;
-		res1 = matmul_flat(A.data(), B.data(), dim, dim, dim);
-	}
-#endif
-
 #else
-	// test_matrix_multiplication_correctness<float>(2);
-	size_t k = 10;
-	const unsigned int size = static_cast<unsigned int>(1) << k * 2;
-	const unsigned int dim = static_cast<unsigned int>(1) << k;
-
-	std::vector<float> A(size);
-	std::vector<float> B(size);
-	for (unsigned int i = 0; i < size; ++i) {
-		A[i] = i;
-		B[i] = i;
-	}
-
-	{
-		std::clog << "Cuda total time:" << endl;
-		benchmark::Timer<float> timer;
-		matmul_cuda(A.data(), B.data(), dim, dim, dim);
-	}
-	{
-		std::clog << "Cuda total time:" << endl;
-		benchmark::Timer<float> timer;
-		matmul_cuda(A.data(), B.data(), dim, dim, dim);
-	}
-	{
-		std::clog << "Cublas total time:" << endl;
-		benchmark::Timer<float> timer;
-		matmul_cublas(A.data(), B.data(), dim, dim, dim);
-	}
-	return 0;
+	test_matrix_multiplication_correctness<float>(2);
 #endif
 }
