@@ -7,7 +7,7 @@
 
 _BENCHMARK_BEGIN
 // After each scope can be used to store/get the duration of that scope
-static std::chrono::duration<float> dur;
+static std::chrono::duration<float> last_duration;
 
 template<typename Ty_>
 class Timer {
@@ -23,7 +23,7 @@ public:
     ~Timer(){
         std::chrono::steady_clock::time_point end = std::chrono::high_resolution_clock::now();
         duration = end - start;
-        dur = duration;
+        last_duration = duration;
         std::clog << "Duration(ms): " << std::chrono::duration_cast<std::chrono::milliseconds>(duration).count() << "ms" << endl;
         std::clog << "Duration(ns): " << std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count() << "ns" << std::endl;
     }
