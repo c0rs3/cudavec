@@ -542,6 +542,7 @@ void test_matrix_multiplication_correctness(unsigned int dim) {
 					<< ": got " << computed[i]
 					<< ", expected " << reference[i] << std::endl;
 				assert(false);
+				return;
 			}
 		}
 		std::cout << "\rLines remaining: " << 0 << " " << std::flush << std::endl;
@@ -559,6 +560,7 @@ void test_matrix_multiplication_correctness(unsigned int dim) {
 					<< ": got " << computed[i]
 					<< ", expected " << reference[i] << std::endl;
 				assert(false);
+				return;
 			}
 		}
 		std::cout << "\rLines remaining: " << 0 << " " << std::flush << std::endl;
@@ -588,7 +590,7 @@ int main() {
 			A[i] = i;
 			B[i] = i;
 		}
-		std::clog << "Testing " << dim << "x" << dim << ".\n";
+		std::clog << "Testing: " << dim << "x" << dim << ".\n";
 		logger.log(std::to_string(size));
 		float dur1 = 0, dur2 = 0, dur3 = 0, dur4 = 0;
 		for (unsigned int i = 0; i < sample_size; i++) {
