@@ -1,6 +1,5 @@
 ﻿#include "cudaVec.cuh"
 
-// KERNELS
 /**
  * \brief Empty kernel for lazy loading
  **/
@@ -71,7 +70,6 @@ __global__ void matmul_kernel(const Ty_* A, const Ty_* B, Ty_* C, unsigned int M
 __host__ void CUDAContextInit(int device = 0) {
 	cudaError_t cudaStatus = cudaSuccess;
 
-	// Set device (GPU)
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to set device! (incompatible GPU?)" << std::endl;
@@ -111,8 +109,7 @@ __host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M,
 				__m256 b_vec;
 				if (j + 8 <= N) {
 					b_vec = _mm256_loadu_ps(&B[k * N + j]);
-				} else {
-					// Tail handling
+				} else { // Tail handling 
 					float tmp[8] = {};
 					for (unsigned int t = 0; t < N - j; ++t)
 						tmp[t] = B[k * N + j + t];
@@ -141,10 +138,8 @@ __host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, unsigned int M,
 
 template <typename Ty_, typename KernelFunc>
 __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::vector<Ty_>& b, KernelFunc kernelFunction) {
-	// cudastatus for tracking errors
 	cudaError_t cudaStatus = cudaSuccess;
 
-	// Set device (GPU)
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to set device! (incompatible GPU?)" << std::endl;
@@ -154,16 +149,14 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::
 	// Device pointers
 	Ty_* dev_a = nullptr, * dev_b = nullptr;
 
-	// Vector size
+	// Operation size
 	size_t size = a.size() > b.size() ? b.size() : a.size();
 
 	// Pinned memory pointer
 	Ty_* c = nullptr;
 
-	// CUDA stream
 	cudaStream_t stream;
 	cudaStatus = cudaStreamCreate(&stream);
-
 
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to create stream!" << std::endl;
@@ -171,14 +164,10 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::
 		return {};
 	}
 
-	// Allocate pinned host memory
 	cudaMallocHost(&c, size * sizeof(Ty_));
-
-	// Allocate device memory
 	cudaMalloc(&dev_a, size * sizeof(Ty_));
 	cudaMalloc(&dev_b, size * sizeof(Ty_));
 
-	// Copy data from host to device asynchronously
 	cudaStatus = cudaMemcpyAsync(dev_a, a.data(), size * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
@@ -206,7 +195,6 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::
 	dim3 threadsPerBlock(size / 1024);
 	kernelFunction << <blocksPerGrid, threadsPerBlock, 0, stream >> > (c, dev_a, dev_b, size);
 
-	// Synchronize the stream to ensure all tasks are complete
 	cudaStatus = cudaStreamSynchronize(stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to synchronize streams!" << std::endl;
@@ -240,10 +228,8 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const std::
 
 template <typename Ty_, typename KernelFunc>
 __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& b, KernelFunc kernelFunction) {
-	// cudastatus for tracking errors
 	cudaError_t cudaStatus = cudaSuccess;
 
-	// Set device (GPU)
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to set device! (incompatible GPU?)" << std::endl;
@@ -253,13 +239,12 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 	// Device pointers
 	Ty_* dev_a = nullptr, * dev_b = nullptr;
 
-	// Vector size
+	// Operation size
 	size_t size = a.size();
 
 	// Pinned memory pointer
 	Ty_* c = nullptr;
 
-	// CUDA stream
 	cudaStream_t stream;
 	cudaStatus = cudaStreamCreate(&stream);
 	if (cudaStatus != cudaSuccess) {
@@ -268,14 +253,10 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 		return {};
 	}
 
-	// Allocate pinned host memory
 	cudaMallocHost(&c, size * sizeof(Ty_));
-
-	// Allocate device memory
 	cudaMalloc(&dev_a, size * sizeof(Ty_));
 	cudaMalloc(&dev_b, sizeof(Ty_));
 
-	// Copy data from host to device asynchronously
 	cudaStatus = cudaMemcpyAsync(dev_a, a.data(), size * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
@@ -286,6 +267,7 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 
 		return {};
 	}
+
 	cudaStatus = cudaMemcpyAsync(dev_b, &b, sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
@@ -302,7 +284,6 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 	dim3 threadsPerBlock(size / 1024);
 	kernelFunction << <blocksPerGrid, threadsPerBlock, 0, stream >> > (c, dev_a, dev_b, size);
 
-	// Synchronize the stream to ensure all tasks are complete
 	cudaStatus = cudaStreamSynchronize(stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to synchronize streams!" << std::endl;
@@ -332,10 +313,8 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 
 template <typename Ty_>
 __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M, unsigned int N, unsigned int K) {
-	// cudastatus for tracking errors
 	cudaError_t cudaStatus = cudaSuccess;
 
-	// Set device (GPU)
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to set device! (incompatible GPU?)" << std::endl;
@@ -345,14 +324,13 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 	// Device pointers
 	Ty_* dev_a = nullptr, * dev_b = nullptr;
 
-	// Vector size
+	// Vector sizes
 	size_t size_a = M * K;
 	size_t size_b = K * N;
 
 	// Pinned memory pointer
 	Ty_* c = nullptr;
 
-	// CUDA stream
 	cudaStream_t stream;
 	cudaStatus = cudaStreamCreate(&stream);
 	if (cudaStatus != cudaSuccess) {
@@ -361,13 +339,12 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 		return {};
 	}
 	
-	// Allocate device memory
+
 	cudaMallocAsync(&dev_a, size_a * sizeof(Ty_), stream);
 	cudaMallocAsync(&dev_b, size_b * sizeof(Ty_), stream);
-	// Allocate pinned host memory
+
 	cudaMallocHost(&c, M * N * sizeof(Ty_));
 
-	// Copy data from host to device asynchronously
 	cudaStatus = cudaMemcpyAsync(dev_a, a, size_a * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed memcpy!" << std::endl;
@@ -398,7 +375,6 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 	unsigned int threadsPerBlock = 1024;
 	matmul_kernel << <blocksPerGrid, threadsPerBlock, 0, stream >> > (dev_a, dev_b, c, M, N, K);
 
-	// Synchronize the stream to ensure all tasks are complete
 	cudaStatus = cudaStreamSynchronize(stream);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to synchronize streams!" << std::endl;
@@ -410,7 +386,7 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 		return {};
 	}
 	std::vector<Ty_> res = std::vector<Ty_>(c, c + M * N);
-	// cudaMemcpyAsync(res.data(), c, M * N, cudaMemcpyDeviceToHost, stream);
+
 	// Cleanup
 	cudaFree(dev_a);
 	cudaFree(dev_b);
@@ -427,7 +403,6 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, unsigned int M
 
 template <typename Ty_>
 __host__ std::vector<Ty_> matmul_cublas(const Ty_* A, const Ty_* B, unsigned int M, unsigned int N, unsigned int K) {
-	// static_assert(std::is_same<Ty_, float>::value || std::is_same<Ty_, double>::value, "Ty_ must be float or double");
 	cudaError_t cudaStatus = cudaSuccess;
 	cudaStream_t stream;
 	cudaStatus = cudaStreamCreate(&stream);
