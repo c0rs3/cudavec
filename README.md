@@ -1,4 +1,4 @@
-# cudaVec
+# cudavec
 
 - Implementation of matrix multipication _(and few other operators)_ with CUDA
 - All kernel functions are wrapped/can be wrapped in a helper function
@@ -13,12 +13,72 @@
 
 ## Quick start
 
-### Prerequisites
-
 - (_It is suggested to use the Visual Studio 2022 CUDA project template for the setup_)
+
+### MSVC + nvcc + CMake
+
+#### Setup for MSVC + nvcc + CMake
+
+- MSVC ```19.0.0 or higher```
+- nvcc ```CUDA Runtime 12.0``` or higher
+- GPU NVIDIA® GPU Geforce® 1000 series+ or NVIDIA® Workstation GPU series
+
+#### Building & running the example for MSVC + nvcc + CMake
+
+- build
+
+```bash
+cmake -B build -G "Visual Studio 17 2022" -S .
+cmake --build build
+```
+
+- and run
+
+```bash
+./build/cudavec.exe
+```
+
+### gnu + nvcc + CMake (Linux only)
+
+#### Setup for gnu + nvcc
+
+- GNU ```g++ (GCC) 15.0.0```
+- nvcc ```CUDA Runtime 12.0``` or higher
+- GPU NVIDIA® GPU Geforce® 1000 series+ or NVIDIA® Workstation GPU series
+
+```bash
+sudo pacman -S nvidia nvidia-utils nvidia-settings
+sudo pacman -S base-devel gcc cuda
+```
+
+#### Building & running the example for gnu + nvcc + CMake (Linux only)
+
+- Run
+
+```bash
+cmake -B build -G "Unix Makefiles" -S .
+cmake --build build
+```
+
+- and execute the binary
+
+```bash
+./build/cudavec
+```
+
+### MSVC + nvcc (Visual Studio)
+
+#### Setup for MSVC + nvcc (Visual Studio)
+
 - ```MSVC v142``` or higher
 - ```CUDA Runtime 12.9``` or higher
-- NVIDIA® GPU Geforce 1000 series+ or NVIDIA® Workstation GPU series
+- NVIDIA® GPU Geforce® 1000 series+ or NVIDIA® Workstation GPU series
+
+#### Running the example for MSVC + nvcc (Visual Studio)
+
+- Add the files to CUDA Project
+
+- Simply build & run
 
 ### Usage
 
