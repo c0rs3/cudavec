@@ -1,12 +1,14 @@
 # User-specific files
-*.txt
 *.rsuser
+*.exp
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
 *.sln
 *.vcxproj
+build
+.vscode
 
 # vcpkg files
 vcpkg_installed
