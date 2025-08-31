@@ -19,7 +19,8 @@
 
 #### Setup for MSVC + nvcc + CMake
 
-- MSVC ```19.0.0 or higher```
+- CMake ```version 4.0.0``` or higher
+- MSVC ```19.0.0``` or higher
 - nvcc ```CUDA Runtime 12.0``` or higher
 - GPU NVIDIA® GPU Geforce® 1000 series+ or NVIDIA® Workstation GPU series
 
@@ -42,6 +43,7 @@ cmake --build build
 
 #### Setup for gnu + nvcc
 
+- CMake ```version 4.0.0``` or higher
 - GNU ```g++ (GCC) 15.0.0```
 - nvcc ```CUDA Runtime 12.0``` or higher
 - GPU NVIDIA® GPU Geforce® 1000 series+ or NVIDIA® Workstation GPU series
