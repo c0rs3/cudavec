@@ -1,5 +1,7 @@
 #include <cudavec.cuh>
 
+using namespace benchtools;
+
 int main() {
 	Logger logger{ "log.txt", std::ios::app };
 	CUDAContextInit(0);
@@ -24,29 +26,29 @@ int main() {
 				benchtools::Timer timer;
 				res1 = matmul_cublas(A.data(), B.data(), dim, dim, dim);
 			}
-			dur1 += benchtools::LAST_DURATION.count(); {
+			dur1 += durationCast(LAST_DURATION, timeunit::milisecond).count(); {
 				std::clog << "cuda total time:" << endl;
 				benchtools::Timer timer;
 				res1 = matmul_cuda(A.data(), B.data(), dim, dim, dim);
 			}
-			dur2 += benchtools::LAST_DURATION.count(); {
+			dur2 += durationCast(LAST_DURATION, timeunit::milisecond).count(); {
 				std::clog << "Flat total time:" << endl;
 				benchtools::Timer timer;
 				res1 = matmul_flat(A.data(), B.data(), dim, dim, dim);
 			}
+			dur3 += durationCast(LAST_DURATION, timeunit::milisecond).count(); {
 #if OS_WINDOWS
-			dur3 += benchtools::LAST_DURATION.count(); {
 				std::clog << "AVX total time:" << endl;
 				benchtools::Timer timer;
 				res1 = matmul_avx(A.data(), B.data(), dim, dim, dim);
 #endif
-		}
-			dur4 += benchtools::LAST_DURATION.count();
+			}
+			dur4 += durationCast(LAST_DURATION, timeunit::milisecond).count();
 	}
 
 		logger.log(std::to_string(dur1 / sample_size));
 		logger.log(std::to_string(dur2 / sample_size));
 		logger.log(std::to_string(dur3 / sample_size));
 		logger.log(std::to_string(dur4 / sample_size));
-}
+	}
 }
