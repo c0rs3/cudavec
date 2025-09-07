@@ -191,8 +191,9 @@ std::vector<float> res1;
 
 ### Specs
 
-- GPU: Intel I9-14900HX
+- CPU: Intel I9-14900HX
 - GPU: RTX 4060 Mobile
+- RAM: 32GB DDR5 5600mHz
 
 ### Configuration
 
@@ -223,7 +224,8 @@ Duration(ns): 263579904ns
 ```
 
 - 80x speed up on GPU compared to CPU and 18x compared to AVX Instructions
-- Comparable performance with CUBLAS
+- Comparable performance with cuBLAS
+- However it's important to note that cuBLAS has an overhead of streaming the results back to the CPU
 
 ***
 
