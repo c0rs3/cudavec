@@ -1,8 +1,5 @@
 ﻿#include <cudavec.cuh>
 
-/**
- * \brief Empty kernel for lazy loading
- **/
 __global__ void KernelWarmup() {}
 
 template<typename Ty_>
@@ -76,8 +73,44 @@ __host__ void CUDAContextInit(int device = 0) {
 		return;
 	}
 
+	cudaDeviceProp deviceProps;
+	if (cudaStatus != cudaSuccess) {
+		std::cerr << "Failed to retrieve device properties! (incompatible GPU?)" << std::endl;
+		return;
+	}
+
 	KernelWarmup << <1, 1 >> > ();
 	cudaDeviceSynchronize();
+
+	cudaStatus = cudaGetDeviceProperties(&deviceProps, 0);
+	std::clog << deviceProps << std::endl;
+}
+
+__host__ std::ostream& operator<<(std::ostream& stream, const cudaDeviceProp& devProps) {
+	stream
+		<< "Device Properties:\n"
+		<< "name: " << devProps.name << "\n"
+		<< "totalGlobalMem: " << (devProps.totalGlobalMem / 1000000000) << "GB" << "\n"
+		<< "sharedMemPerBlock: " << devProps.sharedMemPerBlock << "\n"
+		<< "regsPerBlock: " << devProps.regsPerBlock << "\n"
+		<< "maxThreadsPerBlock: " << devProps.maxThreadsPerBlock << "\n"
+		<< "maxThreadsDim(x): " << devProps.maxThreadsDim[0] << " threads" << "\n"
+		<< "maxThreadsDim(y): " << devProps.maxThreadsDim[1] << " threads" << "\n"
+		<< "maxThreadsDim(z): " << devProps.maxThreadsDim[2] << " threads" << "\n"
+		<< "maxGridSize(x): " << devProps.maxGridSize[0] << " grids" << "\n"
+		<< "maxGridSize(y): " << devProps.maxGridSize[1] << " grids" << "\n"
+		<< "maxGridSize(z): " << devProps.maxGridSize[2] << " grids" << "\n"
+		<< "major CUDA compute capability: " << devProps.major << "\n"
+		<< "minor CUDA compute capability: " << devProps.minor << "\n"
+		<< "multiProcessorCount: " << devProps.multiProcessorCount << "\n"
+		<< "memoryBusWidth: " << devProps.memoryBusWidth << " bits" << "\n"
+		<< "l2CacheSize: " << (devProps.l2CacheSize / 1000000) << "MB" << "\n"
+		<< "maxThreadsPerMultiProcessor" << devProps.maxThreadsPerMultiProcessor << "\n";
+	return stream;
+}
+
+__host__ void logDeviceProp(const cudaDeviceProp& devProps) {
+	std::clog << devProps;
 }
 
 template<typename Ty_>
@@ -95,6 +128,7 @@ __host__ std::vector<Ty_> matmul_flat(const Ty_* A, const Ty_* B, uint32_t M, ui
 
 	return C;
 }
+
 #if OS_WINDOWS
 template<typename Ty_>
 __host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, uint32_t M, uint32_t N, uint32_t K) {
@@ -137,8 +171,6 @@ __host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, uint32_t M, uin
 	delete[] C;
 	return result;
 }
-#elif OS_LINUX
-#else
 #endif
 
 template <typename Ty_, typename KernelFunc>
@@ -319,10 +351,17 @@ __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& 
 template <typename Ty_>
 __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, uint32_t M, uint32_t N, uint32_t K) {
 	cudaError_t cudaStatus = cudaSuccess;
+	cudaDeviceProp deviceProps;
 
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
 		std::cerr << "Failed to set device! (incompatible GPU?)" << std::endl;
+		return {};
+	}
+
+	cudaStatus = cudaGetDeviceProperties(&deviceProps, 0);
+	if (cudaStatus != cudaSuccess) {
+		std::cerr << "Failed to retrieve device properties! (incompatible GPU?)" << std::endl;
 		return {};
 	}
 
@@ -372,12 +411,10 @@ __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, uint32_t M, ui
 		return {};
 	}
 
-	// dim3 blocksPerGrid((N + 15) / 16, (M + 15) / 16);
-	// dim3 threadsPerBlock(8, 8);
 	// Kernel launch configuration
-	// TODO: Variable (& better) launch configuration
-	uint32_t blocksPerGrid = 1024;
-	uint32_t threadsPerBlock = 1024;
+	// TODO: Better launch configuration
+	uint32_t threadsPerBlock = deviceProps.maxThreadsPerBlock;
+	uint32_t blocksPerGrid = threadsPerBlock;
 	matmul_kernel << <blocksPerGrid, threadsPerBlock, 0, stream >> > (dev_a, dev_b, c, M, N, K);
 
 	cudaStatus = cudaStreamSynchronize(stream);
