@@ -10,6 +10,7 @@
 - [CUDA Usage](#cuda-api-approach)
 - [Benchmark Results](#benchmark-results)
 - [Lazy Loading Improvements](#lazy-loading)
+- [Licensing](#licensing)
 
 ## Quick start
 
@@ -157,7 +158,6 @@ std::vector<float> res1;
 ```cpp
  // Streams for async allocation, copy etc.
  cudaStream_t stream;
- 
  cudaStatus = cudaStreamCreate(&stream);
  
  cudaMallocAsync(&dev_a, size_a * sizeof(Ty_), stream);
@@ -166,17 +166,15 @@ std::vector<float> res1;
  // a section RAM is allocated for shared usage between CPU & GPU
  cudaMallocHost(&c, M * N * sizeof(Ty_));
 
+ // VRAM allocation
  cudaStatus = cudaMemcpyAsync(dev_a, a, size_a * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
-
-
  cudaStatus = cudaMemcpyAsync(dev_b, b, size_b * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
 ```
 
 ```cpp
- // Kernel launch configuration is not dynamic but decent enough 
  // 1024 is usually the maximum threads allowed across NVIDIA GPUs
- unsigned int blocksPerGrid = 1024;
- unsigned int threadsPerBlock = 1024;
+ uint32_t threadsPerBlock = deviceProps.maxThreadsPerBlock;
+ uint32_t blocksPerGrid = threadsPerBlock;
  matmul_kernel << <blocksPerGrid, threadsPerBlock, 0, stream >> > (dev_a, dev_b, c, M, N, K);
 ```
 
