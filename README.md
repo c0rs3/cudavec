@@ -136,6 +136,8 @@ std::vector<float> res1;
 }
 ```
 
+***
+
 ## CUDA API Approach
 
 ```cpp
@@ -178,6 +180,8 @@ std::vector<float> res1;
  matmul_kernel << <blocksPerGrid, threadsPerBlock, 0, stream >> > (dev_a, dev_b, c, M, N, K);
 ```
 
+***
+
 ## Benchmark Results
 
 - Even matrices of varying size are multiplied
@@ -199,7 +203,7 @@ std::vector<float> res1;
 - Launch configuration: Release mode
 - ```/O2``` and ```-use_fast_math``` enabled
 
-![graph smh](benchgraph.png "Title")
+![graph smh](readme/benchgraph.png "Title")
 
 ```bash
 Testing: 1024x1024.
@@ -223,6 +227,8 @@ Duration(ns): 263579904ns
 - 80x speed up on GPU compared to CPU and 18x compared to AVX Instructions
 - Comparable performance with CUBLAS
 
+***
+
 ### Lazy Loading
 
 - With lazy loading (1024 x 1024 matrices)
@@ -245,4 +251,33 @@ Duration(ns): 77046496ns
 CUDA:
 Duration(ms): 7ms
 Duration(ns): 7368700ns
+```
+
+***
+
+### Licensing
+
+```md
+License
+-------
+cudavec is licensed under the MIT License (see LICENSE).
+
+Third-Party
+-----------
+This project depends on NVIDIA CUDA Toolkit components (e.g., cuBLAS).
+These components are licensed by NVIDIA under the CUDA EULA and are not
+covered by the cudavec license. Users must install a compatible CUDA
+Toolkit/driver. If you redistribute any NVIDIA runtime libraries, ensure
+compliance with the CUDA EULA for your CUDA version.
+```
+
+### Trademarks
+
+```md
+Trademarks
+----------
+NVIDIA, the NVIDIA logo, CUDA, cuBLAS, GeForce, and GeForce RTX are trademarks
+or registered trademarks of NVIDIA Corporation in the United States and other
+countries. All other trademarks are the property of their respective owners.
+No endorsement by NVIDIA is implied.
 ```
