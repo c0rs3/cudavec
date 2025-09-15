@@ -24,14 +24,14 @@
 #define BENCHMARK 1
 
 #if defined(_WIN32) || defined(_WIN64)
-  #define OS_WINDOWS 1
-  #define OS_LINUX 0
+#define OS_WINDOWS 1
+#define OS_LINUX 0
 #elif defined(__linux__)
-  #define OS_WINDOWS 0
-  #define OS_LINUX 1
+#define OS_WINDOWS 0
+#define OS_LINUX 1
 #else
-  #define OS_WINDOWS 0
-  #define OS_LINUX 0
+#define OS_WINDOWS 0
+#define OS_LINUX 0
 #endif
 
 using std::cout;
@@ -39,6 +39,18 @@ using std::clog;
 using std::endl;
 using std::cerr;
 using std::flush;
+
+/**
+ * \brief Struct for storing memory statistics of current device
+ **/
+struct DeviceMemoryStatus {
+    DeviceMemoryStatus();
+    size_t mFreeAmount;
+    size_t mTotalAmount;
+    size_t mUsedAmount;
+};
+
+__host__ std::ostream& operator<<(std::ostream& stream, const DeviceMemoryStatus& memStatus);
 
 /**
  * \brief Empty kernel for lazy loading
@@ -76,7 +88,7 @@ __host__ void CUDAContextInit(int device);
 
 __host__ std::ostream& operator<<(std::ostream& stream, const cudaDeviceProp& devProps);
 
-__host__ void logDeviceProp(const cudaDeviceProp& devProps);
+__host__ uint32_t deviceSharedMemory(const int& device);
 
 /**
  * \brief Performs matrix multiplication using CPU on two matrices

@@ -66,6 +66,7 @@ __global__ void matmul_kernel(const Ty_* A, const Ty_* B, Ty_* C, uint32_t M, ui
 
 __host__ void CUDAContextInit(int device = 0) {
 	cudaError_t cudaStatus = cudaSuccess;
+	std::clog << "Initializing context for device: " << device << std::endl;
 
 	cudaStatus = cudaSetDevice(0);
 	if (cudaStatus != cudaSuccess) {
@@ -89,29 +90,44 @@ __host__ void CUDAContextInit(int device = 0) {
 __host__ std::ostream& operator<<(std::ostream& stream, const cudaDeviceProp& devProps) {
 	stream
 		<< "Device Properties:\n"
-		<< "name: " << devProps.name << "\n"
-		<< "totalGlobalMem: " << (devProps.totalGlobalMem / 1000000000) << "GB" << "\n"
-		<< "sharedMemPerBlock: " << devProps.sharedMemPerBlock << "\n"
-		<< "regsPerBlock: " << devProps.regsPerBlock << "\n"
-		<< "maxThreadsPerBlock: " << devProps.maxThreadsPerBlock << "\n"
+		<< "Device name: " << devProps.name << "\n"
+		<< "totalGlobalMem: " << (devProps.totalGlobalMem) << " bytes" << "\n"
+		<< "sharedMemPerBlock: " << devProps.sharedMemPerBlock << " bytes" << "\n"
+		// << "regsPerBlock: " << devProps.regsPerBlock << "\n"
+		<< "maxThreadsPerBlock: " << devProps.maxThreadsPerBlock << " threads" << "\n"
 		<< "maxThreadsDim(x): " << devProps.maxThreadsDim[0] << " threads" << "\n"
-		<< "maxThreadsDim(y): " << devProps.maxThreadsDim[1] << " threads" << "\n"
-		<< "maxThreadsDim(z): " << devProps.maxThreadsDim[2] << " threads" << "\n"
+		// << "maxThreadsDim(y): " << devProps.maxThreadsDim[1] << " threads" << "\n"
+		// << "maxThreadsDim(z): " << devProps.maxThreadsDim[2] << " threads" << "\n"
 		<< "maxGridSize(x): " << devProps.maxGridSize[0] << " grids" << "\n"
-		<< "maxGridSize(y): " << devProps.maxGridSize[1] << " grids" << "\n"
-		<< "maxGridSize(z): " << devProps.maxGridSize[2] << " grids" << "\n"
+		// << "maxGridSize(y): " << devProps.maxGridSize[1] << " grids" << "\n"
+		// << "maxGridSize(z): " << devProps.maxGridSize[2] << " grids" << "\n"
 		<< "major CUDA compute capability: " << devProps.major << "\n"
 		<< "minor CUDA compute capability: " << devProps.minor << "\n"
-		<< "multiProcessorCount: " << devProps.multiProcessorCount << "\n"
+		<< "multiProcessorCount: " << devProps.multiProcessorCount << " processors" << "\n"
 		<< "memoryBusWidth: " << devProps.memoryBusWidth << " bits" << "\n"
-		<< "l2CacheSize: " << (devProps.l2CacheSize / 1000000) << "MB" << "\n"
-		<< "maxThreadsPerMultiProcessor" << devProps.maxThreadsPerMultiProcessor << "\n";
+		// << "l2CacheSize: " << (devProps.l2CacheSize / 1000000) << "MB" << "\n"
+		<< "maxThreadsPerMultiProcessor: " << devProps.maxThreadsPerMultiProcessor << " threads" << "\n";
 	return stream;
 }
 
-__host__ void logDeviceProp(const cudaDeviceProp& devProps) {
-	std::clog << devProps;
+DeviceMemoryStatus::DeviceMemoryStatus() {
+	cudaError_t cudaStatus;
+
+	cudaStatus = cudaMemGetInfo(&mFreeAmount, &mTotalAmount);
+	if (cudaStatus) {
+		std::clog << "Failed to retrieve memory info from the current context device\n" << std::flush;
+	}
+	mUsedAmount = mTotalAmount - mFreeAmount;
 }
+
+__host__ std::ostream& operator<<(std::ostream& stream, const DeviceMemoryStatus& memStatus) {
+	stream
+		<< "Free amount: " << (memStatus.mFreeAmount / (1024 * 1024)) << "MB" << std::endl
+		<< "Used amount: " << (memStatus.mUsedAmount / (1024 * 1024)) << "MB" << std::endl
+		<< "Total available amount: " << (memStatus.mTotalAmount / (1024 * 1024)) << "MB" << std::flush;
+	return stream;
+}
+
 
 template<typename Ty_>
 __host__ std::vector<Ty_> matmul_flat(const Ty_* A, const Ty_* B, uint32_t M, uint32_t N, uint32_t K) {
