@@ -1,6 +1,10 @@
 #include <timer.h>
 
+#define EXPLICIT_LOG
+
 namespace benchtools {
+    std::chrono::steady_clock::duration LAST_DURATION{};
+
     Timer::Timer() {
         mStart = std::chrono::steady_clock::now();
     }
@@ -13,7 +17,7 @@ namespace benchtools {
     Timer::~Timer() {
         std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
         mDuration = end - mStart;
-        LAST_DURATION = std::chrono::duration_cast<std::chrono::milliseconds>(mDuration);
+        LAST_DURATION = end - mStart;
 #ifndef EXPLICIT_LOG
         switch (mUnit) {
         case timeunit::nanosecond:
@@ -80,7 +84,7 @@ namespace benchtools {
         mUnit = unit;
     };
 
-    std::chrono::duration<double> durationCast(std::chrono::duration<double>& otherDuration, timeunit unit) {
+    std::chrono::duration<double> durationCast(const std::chrono::duration<double>& otherDuration, timeunit unit) {
         if (unit == nanosecond) {
             return std::chrono::duration_cast<std::chrono::nanoseconds>(otherDuration);
         }
@@ -102,7 +106,6 @@ namespace benchtools {
         else {
             return std::chrono::duration_cast<std::chrono::milliseconds>(otherDuration);
         }
-        return std::chrono::duration_cast<std::chrono::milliseconds>(otherDuration);
     };
 }
 
@@ -112,9 +115,10 @@ std::string return_current_time_and_date() {
     auto in_time_t = std::chrono::system_clock::to_time_t(now);
 
     struct tm time_info;
-#if defined(__GNUC__)
+#if defined(__GNUG__)
 #define COMPILER_GCC
-    localtime_r(&in_time_t, &time_info);
+    // localtime_r(&in_time_t, &time_info); WTF
+    localtime_s(&time_info, &in_time_t);
 #elif defined(_MSC_VER)
     localtime_s(&time_info, &in_time_t);
 #endif

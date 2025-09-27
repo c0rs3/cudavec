@@ -10,7 +10,7 @@
 
 namespace benchtools {
     using duration = std::chrono::duration<double>;
-    
+
     /******************************************************************************
      * @brief Enum for setting the time unit for benchtools::Timer
      ******************************************************************************/
@@ -23,16 +23,16 @@ namespace benchtools {
         minute = 0x0000003C,
         hour = 0x00000E10,
     };
-    
-    std::chrono::duration<double> durationCast(std::chrono::duration<double>& otherDuration, timeunit unit);
 
     /******************************************************************************
      * @brief Stores the duration from the last deconstructor called
      * @warning DO NOT TRY TO EDIT THE VARIABLE
      * @note This variable is not thread-safe exactly.
      * @note Depending on the time of access another duration from an another .cpp file might be returned
- ******************************************************************************/
-    static std::chrono::duration<double> LAST_DURATION;
+    ******************************************************************************/
+    extern std::chrono::steady_clock::duration LAST_DURATION;
+
+    std::chrono::duration<double> durationCast(const std::chrono::duration<double>& otherDuration, timeunit unit);
 
     /******************************************************************************
     * @brief Timer class

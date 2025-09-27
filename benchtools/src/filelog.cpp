@@ -19,6 +19,7 @@ Logger::Logger(std::string file_name, std::ios::openmode fileMode = std::ios::ap
 
 }
 
+
 /******************************************************************************
 * @brief Destructor for the logger object which logs the log end time to the file
  ******************************************************************************/
