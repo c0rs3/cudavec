@@ -1,14 +1,14 @@
 #pragma once
 
-// CUDA 
+// cudart
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 
-// CUBLAS
+// cuBLAS
 #include <cublas_v2.h>
 #include <cublasLt.h>
 
-// STL
+// standard libraries
 #include <type_traits>
 #include <vector>
 #include <immintrin.h>
@@ -18,7 +18,6 @@
 #include <stdint.h>
 #include <fstream>
 #include <cstring>
-
 #include <benchmark.h>
 
 #define BENCHMARK 1
@@ -35,12 +34,19 @@
 #endif
 
 using std::cout;
-using std::clog;
 using std::endl;
+using std::clog;
 using std::cerr;
 using std::flush;
 
 namespace cudavec {
+    /**
+     * Constants for size conversion
+     **/
+    constexpr size_t c_Kilobyte = 1024;
+    constexpr size_t c_Megabyte = 1024 * 1024;
+    constexpr size_t c_Gigabyte = 1024 * 1024 * 1024;
+
     /**
      * \brief Struct for storing memory statistics of current device
      **/
@@ -51,6 +57,7 @@ namespace cudavec {
         size_t mUsedAmount;
     };
 
+    __host__ std::ostream& operator<<(std::ostream& stream, const std::vector<float> vo);
     __host__ std::ostream& operator<<(std::ostream& stream, const DeviceMemoryStatus& memStatus);
 
     /**
@@ -83,13 +90,11 @@ namespace cudavec {
     __global__ void matmul_kernel(const Ty_* A, const Ty_* B, Ty_* C, uint32_t M, uint32_t N, uint32_t K);
 
     /**
-     * \brief Host function for initializing CUDA contexes
+     * \brief Host function for initializing CUDA context
      **/
     __host__ void CUDAContextInit(int device);
 
     __host__ std::ostream& operator<<(std::ostream& stream, const cudaDeviceProp& devProps);
-
-    __host__ uint32_t deviceSharedMemory(const int& device);
 
     /**
      * \brief Performs matrix multiplication using CPU on two matrices
@@ -103,7 +108,7 @@ namespace cudavec {
     __host__ std::vector<Ty_> matmul_flat(const Ty_* A, const Ty_* B, uint32_t M, uint32_t N, uint32_t K);
 
 #if OS_WINDOWS
-    #include <windows.h>
+#include <windows.h>
     /**
      * \brief Performs matrix multiplication using AVX instruction set on two matrices
      * \param a pointer to a 1D serialized array with size of M*K
@@ -116,11 +121,43 @@ namespace cudavec {
     __host__ std::vector<Ty_> matmul_avx(const Ty_* A, const Ty_* B, uint32_t M, uint32_t N, uint32_t K);
 
     uint64_t getTotalSystemMemory();
-#elif 
-    // TODO implement avx for linux specific idk
+#elif
 #include <unistd.h>
     unsigned long long getTotalSystemMemory()
 #endif
+        /**
+         * \brief Performs matrix multiplication using CUDA on two matrices. \n This function make the appropiate call depending on the available memory.
+         * \param a pointer to a 1D serialized array with size of M*K
+         * \param b pointer to a 1D serialized array with size of N*K
+         * \param M array's (uncommon) dimension
+         * \param N array's (uncommon) dimension
+         * \param K both arrays' common dimensions
+        **/
+        template <typename Ty_>
+    __host__ std::vector<Ty_> matmul_cuda(const Ty_* host_a, const Ty_* host_b, uint32_t M, uint32_t N, uint32_t K);
+
+    /**
+     * \brief Performs matrix multiplication using CUDA on two matrices using only VRAM.
+     * \param a pointer to a 1D serialized array with size of M*K
+     * \param b pointer to a 1D serialized array with size of N*K
+     * \param M array's (uncommon) dimension
+     * \param N array's (uncommon) dimension
+     * \param K both arrays' common dimensions
+    **/
+    template <typename Ty_>
+    __host__ std::vector<Ty_> matmul_cuda_VRAM(const Ty_* host_a, const Ty_* host_b, uint32_t M, uint32_t N, uint32_t K);
+
+        /**
+     * \brief Performs matrix multiplication using CUDA on two matrices using VRAM for the operands pagelocked memory for the result.
+     * \param a pointer to a 1D serialized array with size of M*K
+     * \param b pointer to a 1D serialized array with size of N*K
+     * \param M array's (uncommon) dimension
+     * \param N array's (uncommon) dimension
+     * \param K both arrays' common dimensions
+    **/
+    template <typename Ty_>
+    __host__ std::vector<Ty_> matmul_cuda_SHARED(const Ty_* host_a, const Ty_* host_b, uint32_t M, uint32_t N, uint32_t K);
+
     /**
      * \brief Perform an operator on two vectors
      * \param a first operand vector
@@ -138,18 +175,6 @@ namespace cudavec {
      **/
     template <typename Ty_, typename KernelFunc>
     __host__ std::vector<Ty_> performOperator(const std::vector<Ty_>& a, const Ty_& b, KernelFunc kernelFunction);
-
-    /**
-     * \brief Performs matrix multiplication using CUDA on two matrices
-     * \param a pointer to a 1D serialized array with size of M*K
-     * \param b pointer to a 1D serialized array with size of N*K
-     * \param M array's (uncommon) dimension
-     * \param N array's (uncommon) dimension
-     * \param K both arrays' common dimensions
-     **/
-    template <typename Ty_>
-    __host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, uint32_t M, uint32_t N, uint32_t K);
-
 
     /**
      * \brief Performs matrix multiplication using cuBLAS on two matrices

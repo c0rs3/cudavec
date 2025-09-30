@@ -1,9 +1,6 @@
 ﻿#include <cudavec.cuh>
-namespace cudavec {
-	constexpr size_t c_Kilobyte = 1024;
-	constexpr size_t c_Megabyte = 1024 * 1024;
-	constexpr size_t c_Gigabyte = 1024 * 1024 * 1024;
 
+namespace cudavec {
 	__global__ void KernelWarmup() {}
 
 	template<typename Ty_>
@@ -70,7 +67,6 @@ namespace cudavec {
 
 	__host__ void CUDAContextInit(int device = 0) {
 		cudaError_t cudaStatus = cudaSuccess;
-		std::clog << "Initializing context for device: " << device << std::endl;
 
 		cudaStatus = cudaSetDevice(0);
 		if (cudaStatus != cudaSuccess) {
@@ -84,11 +80,19 @@ namespace cudavec {
 			return;
 		}
 
+		std::clog << "Initializing context for device: " << deviceProps.name << std::endl;
+
 		KernelWarmup << <1, 1 >> > ();
 		cudaDeviceSynchronize();
 
 		cudaStatus = cudaGetDeviceProperties(&deviceProps, 0);
 		std::clog << deviceProps << std::endl;
+	}
+
+	__host__ std::ostream& operator<<(std::ostream& stream, const std::vector<float> vo) {
+		for (float x : vo)
+			stream << x << "\n";
+		return stream;
 	}
 
 	__host__ std::ostream& operator<<(std::ostream& stream, const cudaDeviceProp& devProps) {
@@ -199,124 +203,165 @@ namespace cudavec {
 		GlobalMemoryStatusEx(&status);
 		return status.ullTotalPhys;
 	}
-#elif
+#elif OS_LINUX
 	uint64_t getTotalSystemMemory() {
 		long pages = sysconf(_SC_PHYS_PAGES);
 		long page_size = sysconf(_SC_PAGE_SIZE);
 		return pages * page_size;
 	}
 #endif
-
 	template <typename Ty_>
-	__host__ std::vector<Ty_> matmul_cuda(const Ty_* a, const Ty_* b, uint32_t M, uint32_t N, uint32_t K) {
-		cudaError_t cudaStatus = cudaSuccess;
-		cudaDeviceProp deviceProps;
+	__host__ std::vector<Ty_> matmul_cuda(const Ty_* host_a, const Ty_* host_b, uint32_t M, uint32_t N, uint32_t K) {
 		DeviceMemoryStatus memoryStatus{};
-
 		size_t operandAllocSize = (M * K * sizeof(Ty_)) / (1024 * 1024) + (K * N * sizeof(Ty_)) / (1024 * 1024);
 		size_t resultAllocSize = (M * N * sizeof(Ty_)) / (1024 * 1024);
 		uint64_t hostMemorySize = getTotalSystemMemory();
 
-		std::clog << memoryStatus << std::endl;
-		std::clog << hostMemorySize / (c_Megabyte) << "MB host memory status" << std::endl;
-		std::clog << operandAllocSize << " megabytes required for operand allocation" << std::endl;
-		std::clog << resultAllocSize << " megabytes required for result (3-like-system) allocation" << std::endl;
+		// std::clog << memoryStatus << std::endl;
+		// std::clog << hostMemorySize / (c_Megabyte) << "MB host memory status" << std::endl;
+		// std::clog << operandAllocSize << " megabytes required for operand allocation" << std::endl;
+		// std::clog << resultAllocSize << " megabytes required for result (3-like-system) allocation" << std::endl;
 
-		if (memoryStatus.mFreeAmount <= operandAllocSize + resultAllocSize) {
-			std::clog << "Better to alloc page-locked host device memory or VRAM not enough\n";
-		}
-		else {
-			std::clog << "VRAM should be enough\n";
-		}
-
-		cudaStatus = cudaSetDevice(0);
-		if (cudaStatus != cudaSuccess) {
-			std::cerr << "Failed to set device! (incompatible GPU?)" << std::endl;
+		if (operandAllocSize + resultAllocSize >= memoryStatus.mFreeAmount) {
+			// std::cerr << "Not enough VRAM for the process!\n";
 			return {};
 		}
-
-		cudaStatus = cudaGetDeviceProperties(&deviceProps, 0);
-		if (cudaStatus != cudaSuccess) {
-			std::cerr << "Failed to retrieve device properties! (incompatible GPU?)" << std::endl;
+		else if (hostMemorySize > operandAllocSize + resultAllocSize && memoryStatus.mFreeAmount > operandAllocSize + resultAllocSize) {
+			// std::clog << "Pagelocked should be enough\n";
+			return matmul_cuda_SHARED(host_a, host_b, M, N, K);
+		}
+		else if (hostMemorySize > operandAllocSize + resultAllocSize) {
+			std::clog << "only VRAM is enough\n";
+			return matmul_cuda_VRAM(host_a, host_b, M, N, K);
+		}else{
 			return {};
 		}
+	}
 
-		// Device pointers
-		Ty_* dev_a = nullptr, * dev_b = nullptr;
+	template <typename Ty_>
+	__host__ std::vector<Ty_> matmul_cuda_VRAM(const Ty_* host_a, const Ty_* host_b, uint32_t M, uint32_t N, uint32_t K) {
+		cudaError_t errorStatus;
+		cudaStream_t cudaStream;
+		cudaDeviceProp deviceProps;
+		cudaGetDeviceProperties(&deviceProps, 0);
 
 		// Vector sizes
 		size_t size_a = M * K;
 		size_t size_b = K * N;
+		size_t size_c = M * N;
 
-		// Pinned memory pointer
-		Ty_* c = nullptr;
+		std::vector<Ty_> host_c;
+		Ty_* dev_a = nullptr, * dev_b = nullptr, * dev_c = nullptr;
 
-		cudaStream_t stream;
-		cudaStatus = cudaStreamCreate(&stream);
-		if (cudaStatus != cudaSuccess) {
-			std::cerr << "Failed to create stream!" << std::endl;
-			cudaStreamDestroy(stream);
-			return {};
+		host_c.resize(size_c);
+		std::memset(host_c.data(), 0, size_c);
+
+		errorStatus = cudaStreamCreate(&cudaStream);
+		if (errorStatus) {
+			std::cerr << "Failed to create cudaStream! (" << errorStatus << ")" << std::endl;
+			goto ErrorExit;
 		}
 
+		cudaMalloc(&dev_a, size_a * sizeof(Ty_));
+		cudaMalloc(&dev_b, size_b * sizeof(Ty_));
 
-		cudaMallocAsync(&dev_a, size_a * sizeof(Ty_), stream);
-		cudaMallocAsync(&dev_b, size_b * sizeof(Ty_), stream);
-
-		cudaMallocHost(&c, M * N * sizeof(Ty_));
-
-		cudaStatus = cudaMemcpyAsync(dev_a, a, size_a * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
-		if (cudaStatus != cudaSuccess) {
-			std::cerr << "Failed memcpy!" << std::endl;
-			cudaFree(dev_a);
-			cudaFree(dev_b);
-			cudaFreeHost(c);
-			cudaStreamDestroy(stream);
-
-			return {};
+		errorStatus = cudaMemcpy(dev_a, host_a, sizeof(Ty_) * size_a, cudaMemcpyHostToDevice);
+		if (errorStatus) {
+			std::cerr << "Failed to copy from host to device for device pointer a! (" << errorStatus << ")" << std::endl;
+			goto ErrorExit;
+		}
+		errorStatus = cudaMemcpy(dev_b, host_b, sizeof(Ty_) * size_b, cudaMemcpyHostToDevice);
+		if (errorStatus) {
+			std::cerr << "Failed to copy from host to device for device pointer b! (" << errorStatus << ")" << std::endl;
+			goto ErrorExit;
 		}
 
-		cudaStatus = cudaMemcpyAsync(dev_b, b, size_b * sizeof(Ty_), cudaMemcpyHostToDevice, stream);
-		if (cudaStatus != cudaSuccess) {
-			std::cerr << "Failed memcpy!" << std::endl;
-			cudaFree(dev_a);
-			cudaFree(dev_b);
-			cudaFreeHost(c);
-			cudaStreamDestroy(stream);
+		cudaMalloc(&dev_c, size_c * sizeof(Ty_));
 
-			return {};
-		}
-
-		// Kernel launch configuration
-		// TODO: Better launch configuration
 		uint32_t threadsPerBlock = deviceProps.maxThreadsPerBlock;
-		uint32_t blocksPerGrid = threadsPerBlock;
-		matmul_kernel << <blocksPerGrid, threadsPerBlock, 0, stream >> > (dev_a, dev_b, c, M, N, K);
+		dim3 threads(sqrt(threadsPerBlock), sqrt(threadsPerBlock));
+		dim3 blocks((N + threads.x - 1) / threads.x,
+			(M + threads.y - 1) / threads.y);
+		matmul_kernel << <blocks, threads, 0, cudaStream >> > (dev_a, dev_b, dev_c, M, N, K);
+		cudaStreamSynchronize(cudaStream);
 
-		cudaStatus = cudaStreamSynchronize(stream);
-		if (cudaStatus != cudaSuccess) {
-			std::cerr << "Failed to synchronize streams!" << std::endl;
-			cudaFree(dev_a);
-			cudaFree(dev_b);
-			cudaFreeHost(c);
-			cudaStreamDestroy(stream);
-
-			return {};
+		errorStatus = cudaMemcpy(host_c.data(), dev_c, size_c * sizeof(Ty_), cudaMemcpyDeviceToHost);
+		if (errorStatus) {
+			std::cerr << "Failed to copy from device to host for host pointer c! (" << errorStatus << ")" << std::endl;
+			goto ErrorExit;
 		}
-		std::vector<Ty_> res = std::vector<Ty_>(c, c + M * N);
 
-		// Cleanup
 		cudaFree(dev_a);
 		cudaFree(dev_b);
-		cudaFreeHost(c);
-		cudaStatus = cudaStreamDestroy(stream);
+		cudaFree(dev_c);
+		cudaStreamDestroy(cudaStream);
+		return host_c;
+	ErrorExit:
+		std::cerr << "Exited with idk\n" << std::flush;
+		cudaFree(dev_a);
+		cudaFree(dev_b);
+		cudaFree(dev_c);
+		cudaStreamDestroy(cudaStream);
+		return {};
+	}
 
-		if (cudaStatus != cudaSuccess) {
-			std::cerr << "Failed to destroy stream!" << std::endl;
-			return {};
+	template <typename Ty_>
+	__host__ std::vector<Ty_> matmul_cuda_SHARED(const Ty_* host_a, const Ty_* host_b, uint32_t M, uint32_t N, uint32_t K) {
+		cudaError_t errorStatus;
+		cudaStream_t cudaStream;
+		cudaDeviceProp deviceProps;
+		cudaGetDeviceProperties(&deviceProps, 0);
+
+		// Vector sizes
+		size_t size_a = M * K;
+		size_t size_b = K * N;
+		size_t size_c = M * N;
+
+		Ty_* dev_a = nullptr, * dev_b = nullptr, * host_c = nullptr;
+
+		errorStatus = cudaStreamCreate(&cudaStream);
+		if (errorStatus) {
+			std::cerr << "Failed to create cudaStream! (" << errorStatus << ")" << std::endl;
+			goto ErrorExit;
 		}
 
-		return res;
+		cudaMalloc(&dev_a, size_a * sizeof(Ty_));
+		cudaMalloc(&dev_b, size_b * sizeof(Ty_));
+		cudaMallocHost(&host_c, size_c * sizeof(Ty_));
+
+		errorStatus = cudaMemcpy(dev_a, host_a, sizeof(Ty_) * size_a, cudaMemcpyHostToDevice);
+		if (errorStatus) {
+			std::cerr << "Failed to copy from host to device for device pointer a! (" << errorStatus << ")" << std::endl;
+			goto ErrorExit;
+		}
+		errorStatus = cudaMemcpy(dev_b, host_b, sizeof(Ty_) * size_b, cudaMemcpyHostToDevice);
+		if (errorStatus) {
+			std::cerr << "Failed to copy from host to device for device pointer b! (" << errorStatus << ")" << std::endl;
+			goto ErrorExit;
+		}
+
+		uint32_t threadsPerBlock = deviceProps.maxThreadsPerBlock;
+		dim3 threads(sqrt(threadsPerBlock), sqrt(threadsPerBlock));
+		dim3 blocks((N + threads.x - 1) / threads.x,
+			(M + threads.y - 1) / threads.y);
+		{
+			std::cout << "cuda time:" << std::endl;
+			benchtools::Timer timer;
+			matmul_kernel << <blocks, threads, 0, cudaStream >> > (dev_a, dev_b, host_c, M, N, K);
+		}
+		cudaStreamSynchronize(cudaStream);
+
+		cudaFree(dev_a);
+		cudaFree(dev_b);
+		cudaStreamDestroy(cudaStream);
+		return std::vector<Ty_>(host_c, host_c + size_c);
+	ErrorExit:
+		std::cerr << "Exited with " << errorStatus << std::endl;
+		cudaFree(dev_a);
+		cudaFree(dev_b);
+		cudaFreeHost(host_c);
+		cudaStreamDestroy(cudaStream);
+		return {};
 	}
 
 	template <typename Ty_>
@@ -363,31 +408,39 @@ namespace cudavec {
 		Ty_ alpha = 1.0, beta = 0.0;
 
 		if (std::is_same<Ty_, float>::value) {
-			cublasSgemm_v2(
-				handle,
-				CUBLAS_OP_N, CUBLAS_OP_N,
-				M, N, K,
-				&alpha,
-				dev_a, M,
-				dev_b, K,
-				&beta,
-				dev_c, M
-			);
+			{
+				benchtools::Timer timer;
+				std::cout << "cublas time:" << std::endl;
+				cublasSgemm_v2(
+					handle,
+					CUBLAS_OP_N, CUBLAS_OP_N,
+					M, N, K,
+					&alpha,
+					dev_a, M,
+					dev_b, K,
+					&beta,
+					dev_c, M
+				);
+			}
 		}
 		else {
-			cublasSgemm_v2(
-				handle,
-				CUBLAS_OP_N, CUBLAS_OP_N,
-				M, N, K,
-				&alpha,
-				dev_a, M,
-				dev_b, K,
-				&beta,
-				dev_c, M
-			);
+			{
+				benchtools::Timer timer;
+				std::cout << "cublas time:" << std::endl;
+				cublasSgemm_v2(
+					handle,
+					CUBLAS_OP_N, CUBLAS_OP_N,
+					M, N, K,
+					&alpha,
+					dev_a, M,
+					dev_b, K,
+					&beta,
+					dev_c, M
+				);
+			}
 		}
 		std::vector<Ty_> res = std::vector<Ty_>(M * N);
-		cudaMemcpyAsync(res.data(), dev_c, M * N * sizeof(Ty_), cudaMemcpyDeviceToHost, stream);
+		// cudaMemcpyAsync(res.data(), dev_c, M * N * sizeof(Ty_), cudaMemcpyDeviceToHost, stream);
 		cudaDeviceSynchronize();
 
 		cudaFree(dev_a);
@@ -649,6 +702,7 @@ namespace cudavec {
 	template std::vector<float> matmul_cublas<float>(const float*, const float*, uint32_t, uint32_t, uint32_t);
 	template std::vector<float> matmul_cuda<float>(const float*, const float*, uint32_t, uint32_t, uint32_t);
 	template std::vector<float> matmul_flat<float>(const float*, const float*, uint32_t, uint32_t, uint32_t);
+	template void test_matrix_multiplication_correctness<float>(uint32_t);
 #if OS_WINDOWS
 	template std::vector<float> matmul_avx<float>(const float*, const float*, uint32_t, uint32_t, uint32_t);
 #endif
