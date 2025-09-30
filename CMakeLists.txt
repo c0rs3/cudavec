@@ -16,6 +16,10 @@ target_include_directories(cudavec PRIVATE
   "${CMAKE_SOURCE_DIR}/cudavec"
 )
 
+# Suppress some specific warnings
+add_compile_options(/wd4533)
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --diag-suppress=940 --diag-suppress=546")
+
 set_target_properties(cudavec PROPERTIES
   CXX_STANDARD 17
   CUDA_STANDARD 14
