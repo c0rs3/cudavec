@@ -1,6 +1,6 @@
 #include <timer.h>
 
-#define EXPLICIT_LOG
+// #define EXPLICIT_LOG
 
 namespace benchtools {
     std::chrono::steady_clock::duration LAST_DURATION{};
